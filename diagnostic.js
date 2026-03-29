@@ -133,25 +133,25 @@
       min: 33,
       max: 40,
       title: "Base sólida",
-      summary: "Tienes una base bastante buena de diseño. Tu mejora no pasa por hacer más, sino por afinar mejor secuencia, exigencia cognitiva y calidad del material."
+      summary: "Tienes una base bastante sólida de diseño y eso ya se nota en cómo planteas tus materiales. El siguiente paso no pasa por hacer más, sino por afinar mejor la secuencia, la exigencia cognitiva y la calidad final de la propuesta."
     },
     {
       min: 25,
       max: 32,
       title: "Materiales correctos, pero mejorables",
-      summary: "Tus materiales probablemente funcionan, pero todavía dependen demasiado de tu intervención o no siempre convierten la actividad en una experiencia bien diseñada."
+      summary: "Tus materiales probablemente funcionan en el aula, pero todavía hay partes que dependen demasiado de tu intervención o que no terminan de sostener por sí solas una experiencia bien diseñada. Aquí suele haber margen claro para ganar coherencia, autonomía y claridad."
     },
     {
       min: 17,
       max: 24,
       title: "Diseño funcional, pero débil",
-      summary: "Aquí suele haber objetivos poco concretos, secuencia floja, apoyos insuficientes o materiales que añaden fricción. Hay margen claro de mejora."
+      summary: "Aquí suele haber una base funcional, pero todavía frágil: objetivos poco concretos, secuencia floja, apoyos insuficientes o materiales que añaden fricción. Hay margen claro de mejora si se revisa la propuesta con más estructura y criterio."
     },
     {
       min: 10,
       max: 16,
       title: "Mucha improvisación, poco sistema",
-      summary: "Seguramente estás sosteniendo la clase con esfuerzo, pero sin una estructura de diseño suficientemente sólida. No necesitas más recursos. Necesitas un mejor marco de trabajo."
+      summary: "Seguramente estás sosteniendo la clase con mucho esfuerzo, pero sin una estructura de diseño suficientemente sólida detrás. No es una cuestión de sumar más recursos, sino de contar con un marco de trabajo más claro para tomar mejores decisiones."
     }
   ];
 

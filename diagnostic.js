@@ -367,10 +367,17 @@
   async function handleEmailSubmit(event) {
     event.preventDefault();
 
+    const nameInput = emailForm.elements.namedItem("name");
     const emailInput = emailForm.elements.namedItem("email");
     const submitButton = emailForm.querySelector('button[type="submit"]');
 
-    if (!(emailInput instanceof HTMLInputElement)) {
+    if (!(nameInput instanceof HTMLInputElement) || !(emailInput instanceof HTMLInputElement)) {
+      return;
+    }
+
+    if (!nameInput.value.trim()) {
+      showAlert(emailAlert, "Escribe tu nombre para poder enviarte el diagnóstico ampliado.");
+      nameInput.focus();
       return;
     }
 

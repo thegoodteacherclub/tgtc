@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8">
@@ -87,6 +87,107 @@
           <h3>Comprueba</h3>
           <p>Observa el antes y el después, recoge feedback y verifica si la propuesta mejora realmente la respuesta del alumnado.</p>
         </article>
+      </div>
+    </section>
+
+    <section class="section diagnostic-section" id="diagnostico">
+      <div class="section-heading narrow">
+        <p class="eyebrow">Diagnóstico rápido</p>
+        <h2>Un primer diagnóstico para entender mejor cómo están funcionando tus clases.</h2>
+        <p class="section-intro">
+          Responde 10 preguntas breves y obtén una lectura inicial sobre claridad, secuencia, andamiaje, activación cognitiva y diseño del material.
+        </p>
+      </div>
+
+      <div class="diagnostic-shell" data-diagnostic-app>
+        <div class="diagnostic-panel" data-diagnostic-quiz>
+          <div class="diagnostic-progress">
+            <p class="diagnostic-progress-text" data-progress-text>Pregunta 1 de 10</p>
+            <div class="diagnostic-progress-bar" aria-hidden="true">
+              <span class="diagnostic-progress-fill" data-progress-fill></span>
+            </div>
+          </div>
+
+          <div class="diagnostic-card">
+            <p class="diagnostic-dimension" data-question-dimension></p>
+            <form class="diagnostic-question-form" data-question-form novalidate>
+              <fieldset class="diagnostic-fieldset">
+                <legend class="diagnostic-legend" data-question-text></legend>
+                <div class="diagnostic-options" data-question-options></div>
+              </fieldset>
+            </form>
+            <p class="diagnostic-alert" data-question-alert role="alert" hidden></p>
+          </div>
+
+          <div class="diagnostic-nav">
+            <button class="button button-secondary diagnostic-button" type="button" data-action="prev">Anterior</button>
+            <button class="button button-primary diagnostic-button" type="button" data-action="next">Siguiente</button>
+          </div>
+        </div>
+
+        <section class="diagnostic-result" data-diagnostic-result hidden aria-live="polite">
+          <p class="eyebrow">Tu lectura inicial</p>
+          <div class="diagnostic-result-card">
+            <div class="diagnostic-result-main">
+              <p class="diagnostic-profile-label">Perfil</p>
+              <h3 class="diagnostic-profile-title" data-result-profile></h3>
+              <p class="diagnostic-profile-text" data-result-summary></p>
+            </div>
+
+            <div class="diagnostic-insights">
+              <div class="diagnostic-insight">
+                <p class="diagnostic-insight-label">Fortaleza principal</p>
+                <p class="diagnostic-insight-value" data-result-strength></p>
+              </div>
+              <div class="diagnostic-insight">
+                <p class="diagnostic-insight-label">Área prioritaria de mejora</p>
+                <p class="diagnostic-insight-value" data-result-improvement></p>
+              </div>
+            </div>
+
+            <div class="diagnostic-support">
+              <p class="diagnostic-support-text">
+                En The Good Teacher Club te ayudamos a revisar y rediseñar materiales reales con más claridad, estructura y criterio.
+              </p>
+              <p class="diagnostic-support-text diagnostic-support-muted">
+                Si quieres recibir tu diagnóstico ampliado con recomendaciones prácticas, déjanos tu correo.
+              </p>
+            </div>
+          </div>
+
+          <form class="diagnostic-email-form" data-diagnostic-email-form action="https://formspree.io/f/mykbewbv" method="POST" novalidate hidden>
+            <input type="hidden" name="form_type" value="diagnostico">
+            <input type="hidden" name="score_total">
+            <input type="hidden" name="profile">
+            <input type="hidden" name="strength">
+            <input type="hidden" name="improvement_area">
+            <input type="hidden" name="dim_clarity">
+            <input type="hidden" name="dim_sequence">
+            <input type="hidden" name="dim_scaffolding">
+            <input type="hidden" name="dim_cognitive">
+            <input type="hidden" name="dim_material">
+            <input type="hidden" name="q1">
+            <input type="hidden" name="q2">
+            <input type="hidden" name="q3">
+            <input type="hidden" name="q4">
+            <input type="hidden" name="q5">
+            <input type="hidden" name="q6">
+            <input type="hidden" name="q7">
+            <input type="hidden" name="q8">
+            <input type="hidden" name="q9">
+            <input type="hidden" name="q10">
+            <input type="hidden" name="submitted_at">
+            <input type="hidden" name="page_source">
+            <label class="form-field diagnostic-email-field">
+              <span>Tu correo electrónico</span>
+              <input type="email" name="email" placeholder="tu@email.com" autocomplete="email" required>
+            </label>
+            <div class="diagnostic-email-actions">
+              <button class="button button-primary diagnostic-button" type="submit">Recibir diagnóstico ampliado</button>
+            </div>
+            <p class="diagnostic-alert diagnostic-email-alert" data-email-alert role="alert" hidden></p>
+          </form>
+        </section>
       </div>
     </section>
 
@@ -339,5 +440,6 @@
     });
 
   </script>
+  <script src="diagnostic.js"></script>
 </body>
 </html>

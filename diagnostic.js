@@ -409,7 +409,7 @@
         throw new Error("No se pudo enviar el formulario.");
       }
 
-      showAlert(emailAlert, "Diagnóstico enviado. Te escribiremos con la ampliación y las recomendaciones prácticas.");
+      showAlert(emailAlert, "Solicitud enviada. Te escribiremos con la ampliación y las recomendaciones prácticas.");
       emailAlert.classList.add("is-success");
       submitButton.textContent = "Enviado";
     } catch (error) {

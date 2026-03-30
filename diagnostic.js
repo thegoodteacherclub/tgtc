@@ -9,8 +9,8 @@
   const DIMENSIONS = [
     { key: "clarity", label: "objetivo y claridad", questions: [1, 5] },
     { key: "sequence", label: "secuencia", questions: [2, 9] },
-    { key: "scaffolding", label: "andamiaje", questions: [3, 6] },
-    { key: "cognitive", label: "activación cognitiva", questions: [7, 10] },
+    { key: "scaffolding", label: "apoyos", questions: [3, 6] },
+    { key: "cognitive", label: "procesos de pensamiento", questions: [7, 10] },
     { key: "material", label: "diseño del material", questions: [4, 8] }
   ];
 
@@ -19,7 +19,7 @@
     {
       id: 1,
       dimension: "clarity",
-      text: "Cuando planteas una actividad, normalmente el alumnado entiende con claridad qué tiene que aprender?",
+      text: "Cuando planteas una actividad, ¿el alumnado entiende con claridad qué tiene que aprender?",
       options: [
         { id: "A", text: "Entiende lo que tiene que hacer, aunque no siempre el para qué", score: 3 },
         { id: "B", text: "Sí, el propósito suele quedar bastante claro", score: 4 },
@@ -30,7 +30,7 @@
     {
       id: 2,
       dimension: "sequence",
-      text: "Cómo suele estar organizada la actividad que llevas al aula?",
+      text: "¿Cómo suele estar organizada la actividad que llevas al aula?",
       options: [
         { id: "A", text: "Tiene un orden bastante claro, aunque a veces mejorable", score: 3 },
         { id: "B", text: "Va por partes y cada paso prepara el siguiente", score: 4 },
@@ -41,7 +41,7 @@
     {
       id: 3,
       dimension: "scaffolding",
-      text: "Antes de pedir al alumnado que trabaje de forma autónoma, qué suele pasar?",
+      text: "¿Antes de pedir al alumnado que trabaje de forma autónoma, qué suele pasar?",
       options: [
         { id: "A", text: "Hacemos primero una parte guiada o con ejemplo", score: 4 },
         { id: "B", text: "Explico lo principal y luego ya pasan a hacerlo", score: 3 },
@@ -52,7 +52,7 @@
     {
       id: 4,
       dimension: "material",
-      text: "Cuando revisas tus materiales, qué sensación te dejan más a menudo?",
+      text: "Cuando revisas tus materiales, ¿qué sensación te dejan más a menudo?",
       options: [
         { id: "A", text: "Son utilizables, pero podrían estar mejor pensados", score: 3 },
         { id: "B", text: "Funcionan bien y suelen resultar claros", score: 4 },
@@ -74,7 +74,7 @@
     {
       id: 6,
       dimension: "scaffolding",
-      text: "Cuando el alumnado se pone a trabajar, qué ocurre más a menudo?",
+      text: "Cuando el alumnado se pone a trabajar, ¿qué ocurre más a menudo?",
       options: [
         { id: "A", text: "Arranca razonablemente bien, con alguna duda puntual", score: 3 },
         { id: "B", text: "Avanza con bastante autonomía", score: 4 },
@@ -85,7 +85,7 @@
     {
       id: 7,
       dimension: "cognitive",
-      text: "Qué peso tiene el pensamiento real del alumnado en tus actividades?",
+      text: "¿Qué peso tiene el pensamiento real del alumnado en tus actividades?",
       options: [
         { id: "A", text: "Suele haber algo de aplicación o reflexión", score: 3 },
         { id: "B", text: "Tienen que explicar, relacionar, decidir o construir algo con sentido", score: 4 },
@@ -118,7 +118,7 @@
     {
       id: 10,
       dimension: "cognitive",
-      text: "Si piensas en cómo diseñas lo que llevas al aula, cuál frase te representa más?",
+      text: "Si piensas en cómo diseñas lo que llevas al aula, ¿qué frase te representa más?",
       options: [
         { id: "A", text: "Tengo una base bastante clara, pero quiero refinarla", score: 4 },
         { id: "B", text: "Sé que podría mejorar bastante la estructura de mis materiales", score: 2 },

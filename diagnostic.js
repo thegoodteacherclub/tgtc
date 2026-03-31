@@ -369,6 +369,7 @@
 
     const nameInput = emailForm.elements.namedItem("name");
     const emailInput = emailForm.elements.namedItem("email");
+    const consentInput = emailForm.querySelector("[data-privacy-consent]");
     const submitButton = emailForm.querySelector('button[type="submit"]');
 
     if (!(nameInput instanceof HTMLInputElement) || !(emailInput instanceof HTMLInputElement)) {
@@ -396,6 +397,23 @@
     if (!state.result) {
       showAlert(emailAlert, "Primero necesitamos calcular tu diagnóstico.");
       return;
+    }
+
+    if (!(consentInput instanceof HTMLInputElement) || !consentInput.checked) {
+      showAlert(emailAlert, "Necesitamos que aceptes la política de privacidad para poder tratar tus datos y escribirte.");
+      consentInput?.focus();
+      return;
+    }
+
+    const privacyTimestampField = emailForm.elements.namedItem("privacy_consent_timestamp");
+    const privacyConsentField = emailForm.elements.namedItem("privacy_consent");
+
+    if (privacyConsentField instanceof HTMLInputElement) {
+      privacyConsentField.value = "yes";
+    }
+
+    if (privacyTimestampField instanceof HTMLInputElement) {
+      privacyTimestampField.value = new Date().toISOString();
     }
 
     populateHiddenFields(state.result);
@@ -439,3 +457,4 @@
 
   renderQuestion();
 })();
+

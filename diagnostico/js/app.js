@@ -1,6 +1,6 @@
-import { CONFIG } from "./config.js?v=20260405c";
-import { BLOCKS, SCALE_OPTIONS } from "./questions.js?v=20260405c";
-import { getLevelLabel, getLevelMeaning, normalizeResult } from "./scoring.js?v=20260405c";
+import { CONFIG } from "./config.js?v=20260405d";
+import { BLOCKS, SCALE_OPTIONS } from "./questions.js?v=20260405d";
+import { getLevelLabel, getLevelMeaning, normalizeResult } from "./scoring.js?v=20260405d";
 import {
   validarAcceso,
   validarSesion,
@@ -10,7 +10,7 @@ import {
   analizarActividadIA,
   obtenerResultado,
   logoutSesion
-} from "./api.js?v=20260405c";
+} from "./api.js?v=20260405d";
 
 const app = document.querySelector("[data-app]");
 const screens = Array.from(document.querySelectorAll("[data-screen]"));

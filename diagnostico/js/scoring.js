@@ -22,6 +22,7 @@ export function normalizeResult(raw) {
     prioridades: safe.prioridades || [],
     primerPaso: safe.primer_paso || "",
     cierre: safe.cierre_tgtc || "",
-    dimensiones: safe.dimensiones || {}
+    dimensiones: safe.dimensiones || {},
+    analisisIA: safe.analisis_ia || null
   };
 }

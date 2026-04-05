@@ -1,6 +1,6 @@
-import { CONFIG } from "./config.js?v=20260405";
-import { BLOCKS, SCALE_OPTIONS } from "./questions.js?v=20260405";
-import { getLevelLabel, getLevelMeaning, normalizeResult } from "./scoring.js?v=20260405";
+import { CONFIG } from "./config.js?v=20260405b";
+import { BLOCKS, SCALE_OPTIONS } from "./questions.js?v=20260405b";
+import { getLevelLabel, getLevelMeaning, normalizeResult } from "./scoring.js?v=20260405b";
 import {
   validarAcceso,
   validarSesion,
@@ -10,7 +10,7 @@ import {
   analizarActividadIA,
   obtenerResultado,
   logoutSesion
-} from "./api.js?v=20260405";
+} from "./api.js?v=20260405b";
 
 const app = document.querySelector("[data-app]");
 const screens = Array.from(document.querySelectorAll("[data-screen]"));
@@ -112,7 +112,6 @@ function renderField(question) {
         <input type="file" name="${question.id}" ${accept}>
       </label>
       ${uploadedName ? `<p class="diag-help">Archivo actual: <strong>${escapeHtml(uploadedName)}</strong></p>` : ""}
-      ${renderQuestionHelp(question)}
     `;
   }
   if (question.type === "select") {
@@ -128,7 +127,6 @@ function renderField(question) {
           ${options}
         </select>
       </label>
-      ${renderQuestionHelp(question)}
     `;
   }
   if (question.type === "single") {
@@ -147,7 +145,6 @@ function renderField(question) {
             `;
           }).join("")}
         </div>
-        ${renderQuestionHelp(question)}
       </div>
     `;
   }
@@ -168,7 +165,6 @@ function renderField(question) {
             `;
           }).join("")}
         </div>
-        ${renderQuestionHelp(question)}
       </div>
     `;
   }
@@ -191,7 +187,6 @@ function renderField(question) {
             `;
           }).join("")}
         </div>
-        ${renderQuestionHelp(question)}
       </div>
     `;
   }
@@ -201,9 +196,9 @@ function renderField(question) {
 function renderQuestionHelp(question) {
   const helpText = question.help || getDefaultHelpText(question);
   return `
-    <details class="diag-help-toggle">
-      <summary>¿Qué debes escribir aquí?</summary>
-      <p>${escapeHtml(helpText)}</p>
+    <details class="diag-help-toggle" title="Ayuda">
+      <summary aria-label="Ayuda para completar este campo">i</summary>
+      <p><strong>Ayuda</strong><br>${escapeHtml(helpText)}</p>
     </details>
   `;
 }

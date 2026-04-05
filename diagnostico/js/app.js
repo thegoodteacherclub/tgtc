@@ -342,7 +342,7 @@ async function finishDiagnostic() {
   try {
     showLoader("Generando devolución final...");
     await enviarDiagnosticoFinal(state.token, state.answers);
-    if (state.answers.u_archivo_file_id && state.answers.u_archivo_uploaded === true) {
+    if (state.answers.u_archivo_file_id) {
       try {
         showLoader("Analizando actividad con IA...");
         await analizarActividadIA(state.token);

@@ -1,6 +1,6 @@
-import { CONFIG } from "./config.js?v=20260405e";
-import { BLOCKS, SCALE_OPTIONS } from "./questions.js?v=20260405e";
-import { getLevelLabel, getLevelMeaning, normalizeResult } from "./scoring.js?v=20260405e";
+import { CONFIG } from "./config.js?v=20260405f";
+import { BLOCKS, SCALE_OPTIONS } from "./questions.js?v=20260405f";
+import { getLevelLabel, getLevelMeaning, normalizeResult } from "./scoring.js?v=20260405f";
 import {
   validarAcceso,
   validarSesion,
@@ -10,7 +10,7 @@ import {
   analizarActividadIA,
   obtenerResultado,
   logoutSesion
-} from "./api.js?v=20260405e";
+} from "./api.js?v=20260405f";
 
 const app = document.querySelector("[data-app]");
 const screens = Array.from(document.querySelectorAll("[data-screen]"));
@@ -469,6 +469,48 @@ function shortList(list, max = 3) {
   return (Array.isArray(list) ? list : []).slice(0, max);
 }
 
+function renderSimpleList(items) {
+  const safeItems = shortList(items, 3);
+  if (!safeItems.length) return "";
+  return `<ul>${safeItems.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`;
+}
+
+function normalizeLecturaDocumento(ia) {
+  if (Array.isArray(ia?.lectura_documento_ia) && ia.lectura_documento_ia.length) {
+    return ia.lectura_documento_ia
+      .map((item) => ({
+        cita: String(item?.cita || "").trim(),
+        interpretacion: String(item?.interpretacion || "").trim(),
+        impacto: String(item?.impacto || "").trim()
+      }))
+      .filter((item) => item.cita || item.interpretacion || item.impacto)
+      .slice(0, 5);
+  }
+
+  if (Array.isArray(ia?.evidencias_documento_ia) && ia.evidencias_documento_ia.length) {
+    return ia.evidencias_documento_ia.slice(0, 5).map((item) => ({
+      cita: String(item || "").trim(),
+      interpretacion: "",
+      impacto: ""
+    }));
+  }
+
+  return [];
+}
+
+function normalizeAjustesPrioritarios(ia) {
+  if (!Array.isArray(ia?.ajustes_prioritarios_ia)) return [];
+  return ia.ajustes_prioritarios_ia
+    .map((item) => ({
+      problema: String(item?.problema_detectado || "").trim(),
+      evidencia: String(item?.evidencia || "").trim(),
+      cambio: String(item?.cambio_recomendado || "").trim(),
+      paso: String(item?.paso_clase_siguiente || "").trim()
+    }))
+    .filter((item) => item.problema || item.evidencia || item.cambio || item.paso)
+    .slice(0, 4);
+}
+
 function renderVisualSummary(result) {
   const dimensiones = Object.entries(result.dimensiones || {});
   const total = dimensiones.length || 1;
@@ -519,9 +561,45 @@ function renderResult(result) {
     .join("");
 
   const ia = result.analisisIA || null;
-  const evidenciasDocHtml = (ia?.evidencias_documento_ia || [])
-    .map((item) => `<li>${escapeHtml(item)}</li>`)
-    .join("");
+  const lecturaDocumento = normalizeLecturaDocumento(ia);
+  const ajustesPrioritarios = normalizeAjustesPrioritarios(ia);
+
+  const lecturaDocHtml = lecturaDocumento.length ? `
+    <article class="diag-result-card">
+      <h3>7. Qué se ve en tu documento (evidencias reales)</h3>
+      <div class="diag-evidence-grid">
+        ${lecturaDocumento.map((item) => `
+          <article class="diag-evidence-card">
+            ${item.cita ? `<p class="diag-evidence-quote">"${escapeHtml(item.cita)}"</p>` : ""}
+            ${item.interpretacion ? `<p><strong>Lectura didáctica:</strong> ${escapeHtml(item.interpretacion)}</p>` : ""}
+            ${item.impacto ? `<p><strong>Impacto en aprendizaje:</strong> ${escapeHtml(item.impacto)}</p>` : ""}
+          </article>
+        `).join("")}
+      </div>
+    </article>
+  ` : `
+    <article class="diag-result-card">
+      <h3>7. Evidencia de lectura del documento</h3>
+      <p>No se han detectado citas legibles del archivo. Para un análisis más preciso, sube la actividad en formato texto, DOCX o Google Docs.</p>
+    </article>
+  `;
+
+  const ajustesHtml = ajustesPrioritarios.length ? `
+    <article class="diag-result-card">
+      <h3>8. Ajustes prioritarios para tu próxima semana</h3>
+      <div class="diag-adjust-grid">
+        ${ajustesPrioritarios.map((item) => `
+          <article class="diag-adjust-card">
+            ${item.problema ? `<p><strong>Qué ajustar:</strong> ${escapeHtml(item.problema)}</p>` : ""}
+            ${item.evidencia ? `<p><strong>Dónde se ve:</strong> ${escapeHtml(item.evidencia)}</p>` : ""}
+            ${item.cambio ? `<p><strong>Cómo mejorarlo:</strong> ${escapeHtml(item.cambio)}</p>` : ""}
+            ${item.paso ? `<p><strong>Qué hacer en la siguiente clase:</strong> ${escapeHtml(item.paso)}</p>` : ""}
+          </article>
+        `).join("")}
+      </div>
+    </article>
+  ` : "";
+
   const matrizTgtcHtml = (ia?.matriz_tgtc_ia || [])
     .map((row) => {
       const criterio = escapeHtml(row?.criterio || "");
@@ -539,18 +617,16 @@ function renderResult(result) {
     .join("");
   const iaHtml = ia ? `
     <article class="diag-result-card">
-      <h3>7. Lectura ampliada con IA sobre tu actividad real</h3>
-      <p><strong>Síntesis:</strong> ${escapeHtml(ia.resumen_ia || "")}</p>
-      <p><strong>Fortalezas detectadas:</strong></p>
-      <ul>${(ia.fortalezas_ia || []).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
-      <p><strong>Riesgos principales:</strong></p>
-      <ul>${(ia.riesgos_ia || []).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
-      <p><strong>Sugerencias concretas:</strong></p>
-      <ul>${(ia.sugerencias_ia || []).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
-      ${evidenciasDocHtml ? `<p><strong>Evidencias del documento analizado:</strong></p><ul>${evidenciasDocHtml}</ul>` : ""}
-      ${matrizTgtcHtml ? `<p><strong>Matriz metodológica TGTC:</strong></p><ul class="diag-matrix">${matrizTgtcHtml}</ul>` : ""}
+      <h3>6bis. Conclusión orientadora del análisis IA</h3>
+      <p>${escapeHtml(ia.resumen_ia || "")}</p>
+      ${renderSimpleList(ia.fortalezas_ia) ? `<p><strong>Fortalezas clave:</strong></p>${renderSimpleList(ia.fortalezas_ia)}` : ""}
+      ${renderSimpleList(ia.riesgos_ia) ? `<p><strong>Riesgos que conviene atacar ya:</strong></p>${renderSimpleList(ia.riesgos_ia)}` : ""}
+      ${renderSimpleList(ia.sugerencias_ia) ? `<p><strong>Sugerencias concretas:</strong></p>${renderSimpleList(ia.sugerencias_ia)}` : ""}
       <p><strong>Siguiente paso recomendado:</strong> ${escapeHtml(ia.siguiente_paso_ia || "")}</p>
     </article>
+    ${lecturaDocHtml}
+    ${ajustesHtml}
+    ${matrizTgtcHtml ? `<article class="diag-result-card"><h3>9. Matriz metodológica TGTC</h3><ul class="diag-matrix">${matrizTgtcHtml}</ul></article>` : ""}
   ` : "";
 
   resultRoot.innerHTML = `

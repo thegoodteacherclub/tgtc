@@ -566,7 +566,7 @@ function renderResult(result) {
 
   const lecturaDocHtml = lecturaDocumento.length ? `
     <article class="diag-result-card">
-      <h3>7. Qué se ve en tu documento (evidencias reales)</h3>
+      <h3>6. Qué se ve en tu documento (evidencias reales)</h3>
       <div class="diag-evidence-grid">
         ${lecturaDocumento.map((item) => `
           <article class="diag-evidence-card">
@@ -579,7 +579,7 @@ function renderResult(result) {
     </article>
   ` : `
     <article class="diag-result-card">
-      <h3>7. Evidencia de lectura del documento</h3>
+      <h3>6. Evidencia de lectura del documento</h3>
       <p>No se han detectado citas legibles del archivo. Para un análisis más preciso, sube la actividad en formato texto, DOCX o Google Docs.</p>
     </article>
   `;
@@ -619,7 +619,7 @@ function renderResult(result) {
   const iaHtml = ia ? `
     ${lecturaDocHtml}
     <article class="diag-result-card">
-      <h3>6bis. Conclusión orientadora del análisis IA</h3>
+      <h3>7. Conclusión orientadora del análisis IA</h3>
       <p>${escapeHtml(ia.resumen_ia || "")}</p>
       ${renderSimpleList(ia.fortalezas_ia) ? `<p><strong>Fortalezas clave:</strong></p>${renderSimpleList(ia.fortalezas_ia)}` : ""}
       ${renderSimpleList(ia.riesgos_ia) ? `<p><strong>Riesgos que conviene atacar ya:</strong></p>${renderSimpleList(ia.riesgos_ia)}` : ""}
@@ -651,10 +651,6 @@ function renderResult(result) {
     <article class="diag-result-card">
       <h3>5. Tus 3 prioridades de mejora</h3>
       <ul>${shortList(result.prioridades, 3).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
-    </article>
-    <article class="diag-result-card">
-      <h3>6. Tu siguiente paso recomendado</h3>
-      <p>${escapeHtml(result.cierre || "")}</p>
     </article>
     ${iaHtml}
   `;

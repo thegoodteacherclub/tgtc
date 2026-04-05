@@ -1,6 +1,6 @@
-import { CONFIG } from "./config.js?v=20260405g";
-import { BLOCKS, SCALE_OPTIONS } from "./questions.js?v=20260405g";
-import { getLevelLabel, getLevelMeaning, normalizeResult } from "./scoring.js?v=20260405g";
+import { CONFIG } from "./config.js?v=20260405i";
+import { BLOCKS, SCALE_OPTIONS } from "./questions.js?v=20260405i";
+import { getLevelLabel, getLevelMeaning, normalizeResult } from "./scoring.js?v=20260405i";
 import {
   validarAcceso,
   validarSesion,
@@ -10,7 +10,7 @@ import {
   analizarActividadIA,
   obtenerResultado,
   logoutSesion
-} from "./api.js?v=20260405g";
+} from "./api.js?v=20260405i";
 
 const app = document.querySelector("[data-app]");
 const screens = Array.from(document.querySelectorAll("[data-screen]"));
@@ -571,6 +571,7 @@ function renderResult(result) {
       <p><strong>Texto detectado:</strong> ${escapeHtml(String(docDebug.char_count || 0))} caracteres</p>
       <p><strong>Legible:</strong> ${docDebug.readable ? "sí" : "no"}</p>
       <p><strong>Estado:</strong> ${escapeHtml(docDebug.status || "")}</p>
+      ${docDebug.detail ? `<p><strong>Detalle técnico:</strong> ${escapeHtml(docDebug.detail)}</p>` : ""}
     </article>
   ` : "";
 

@@ -5,7 +5,9 @@ import {
   validarAcceso,
   validarSesion,
   guardarRespuesta,
+  subirActividad,
   enviarDiagnosticoFinal,
+  analizarActividadIA,
   obtenerResultado,
   logoutSesion
 } from "./api.js";
@@ -97,6 +99,17 @@ function renderField(question) {
         <span>${question.label}</span>
         <textarea name="${question.id}" ${required}>${escapeHtml(value || "")}</textarea>
       </label>
+    `;
+  }
+  if (question.type === "file") {
+    const uploadedName = state.answers[`${question.id}_nombre`] || "";
+    const accept = question.accept ? `accept="${question.accept}"` : "";
+    return `
+      <label class="diag-field">
+        <span>${question.label}</span>
+        <input type="file" name="${question.id}" ${accept}>
+      </label>
+      ${uploadedName ? `<p class="diag-help">Archivo actual: <strong>${escapeHtml(uploadedName)}</strong></p>` : ""}
     `;
   }
   if (question.type === "select") {
@@ -206,7 +219,23 @@ function readStepData() {
     return null;
   }
   const payload = {};
+  const files = [];
   for (const question of block.questions) {
+    if (question.type === "file") {
+      const input = form.querySelector(`[name="${question.id}"]`);
+      const file = input && input.files ? input.files[0] : null;
+      const existingFileId = state.answers[`${question.id}_file_id`];
+      if (question.required && !file && !existingFileId) {
+        return { error: `Completa "${question.label}".` };
+      }
+      if (file) {
+        files.push({
+          questionId: question.id,
+          file
+        });
+      }
+      continue;
+    }
     if (question.type === "multi") {
       const values = Array.from(form.querySelectorAll(`input[name="${question.id}"]:checked`)).map((el) => el.value);
       if (question.required && values.length === 0) {
@@ -222,7 +251,7 @@ function readStepData() {
     }
     payload[question.id] = question.type === "scale" ? Number(value || 0) : value;
   }
-  return { payload, blockId: block.id };
+  return { payload, files, blockId: block.id };
 }
 
 async function saveStepAndContinue() {
@@ -233,12 +262,33 @@ async function saveStepAndContinue() {
   }
 
   Object.assign(state.answers, current.payload);
-  persistLocalDraft();
-
   try {
     showLoader("Guardando progreso...");
+
+    if (current.files.length > 0) {
+      for (const f of current.files) {
+        const base64 = await readFileAsBase64(f.file);
+        const uploaded = await subirActividad(state.token, {
+          file_name: f.file.name,
+          file_mime: f.file.type || "application/octet-stream",
+          file_base64: base64
+        });
+        state.answers[`${f.questionId}_file_id`] = uploaded.file_id;
+        state.answers[`${f.questionId}_nombre`] = uploaded.nombre;
+        current.payload[`${f.questionId}_file_id`] = uploaded.file_id;
+        current.payload[`${f.questionId}_nombre`] = uploaded.nombre;
+      }
+    }
     await guardarRespuesta(state.token, current.blockId, current.payload);
+  } catch (error) {
+    if (error.code === "SESSION_INVALID") {
+      await forceLogout("La sesión ha caducado. Vuelve a acceder.");
+      return;
+    }
+    setAlert(wizardAlert, error.message || "No se ha podido guardar este paso.");
+    return;
   } finally {
+    persistLocalDraft();
     hideLoader();
   }
 
@@ -255,6 +305,10 @@ async function finishDiagnostic() {
   try {
     showLoader("Generando devolución final...");
     await enviarDiagnosticoFinal(state.token, state.answers);
+    if (state.answers.u_archivo_file_id) {
+      showLoader("Analizando actividad con IA...");
+      await analizarActividadIA(state.token);
+    }
     const resultResponse = await obtenerResultado(state.token);
     state.finalResult = normalizeResult(resultResponse.resultado);
     renderResult(state.finalResult);
@@ -289,6 +343,21 @@ function renderResult(result) {
     .map(([name, data]) => renderDimensionCard(name, data))
     .join("");
 
+  const ia = result.analisisIA || null;
+  const iaHtml = ia ? `
+    <article class="diag-result-card">
+      <h3>7. Lectura ampliada con IA sobre tu actividad real</h3>
+      <p><strong>Síntesis:</strong> ${escapeHtml(ia.resumen_ia || "")}</p>
+      <p><strong>Fortalezas detectadas:</strong></p>
+      <ul>${(ia.fortalezas_ia || []).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
+      <p><strong>Riesgos principales:</strong></p>
+      <ul>${(ia.riesgos_ia || []).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
+      <p><strong>Sugerencias concretas:</strong></p>
+      <ul>${(ia.sugerencias_ia || []).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
+      <p><strong>Siguiente paso recomendado:</strong> ${escapeHtml(ia.siguiente_paso_ia || "")}</p>
+    </article>
+  ` : "";
+
   resultRoot.innerHTML = `
     <article class="diag-result-card">
       <h3>1. Resumen general</h3>
@@ -315,6 +384,7 @@ function renderResult(result) {
       <p>${result.primerPaso}</p>
       <p>${result.cierre}</p>
     </article>
+    ${iaHtml}
   `;
 }
 
@@ -347,6 +417,19 @@ function escapeHtml(value) {
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;");
+}
+
+function readFileAsBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const raw = String(reader.result || "");
+      const base64 = raw.includes(",") ? raw.split(",")[1] : raw;
+      resolve(base64);
+    };
+    reader.onerror = () => reject(new Error("No se ha podido leer el archivo."));
+    reader.readAsDataURL(file);
+  });
 }
 
 async function bootstrapSessionIfExists() {

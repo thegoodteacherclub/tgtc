@@ -91,6 +91,7 @@ function renderField(question) {
         <span>${question.label}</span>
         <input type="text" name="${question.id}" ${required} value="${escapeHtml(value || "")}">
       </label>
+      ${renderQuestionHelp(question)}
     `;
   }
   if (question.type === "textarea") {
@@ -99,6 +100,7 @@ function renderField(question) {
         <span>${question.label}</span>
         <textarea name="${question.id}" ${required}>${escapeHtml(value || "")}</textarea>
       </label>
+      ${renderQuestionHelp(question)}
     `;
   }
   if (question.type === "file") {
@@ -110,6 +112,7 @@ function renderField(question) {
         <input type="file" name="${question.id}" ${accept}>
       </label>
       ${uploadedName ? `<p class="diag-help">Archivo actual: <strong>${escapeHtml(uploadedName)}</strong></p>` : ""}
+      ${renderQuestionHelp(question)}
     `;
   }
   if (question.type === "select") {
@@ -125,6 +128,7 @@ function renderField(question) {
           ${options}
         </select>
       </label>
+      ${renderQuestionHelp(question)}
     `;
   }
   if (question.type === "single") {
@@ -143,6 +147,7 @@ function renderField(question) {
             `;
           }).join("")}
         </div>
+        ${renderQuestionHelp(question)}
       </div>
     `;
   }
@@ -163,6 +168,7 @@ function renderField(question) {
             `;
           }).join("")}
         </div>
+        ${renderQuestionHelp(question)}
       </div>
     `;
   }
@@ -185,10 +191,43 @@ function renderField(question) {
             `;
           }).join("")}
         </div>
+        ${renderQuestionHelp(question)}
       </div>
     `;
   }
   return "";
+}
+
+function renderQuestionHelp(question) {
+  const helpText = question.help || getDefaultHelpText(question);
+  return `
+    <details class="diag-help-toggle">
+      <summary>¿Qué debes escribir aquí?</summary>
+      <p>${escapeHtml(helpText)}</p>
+    </details>
+  `;
+}
+
+function getDefaultHelpText(question) {
+  if (question.type === "file") {
+    return "Sube una actividad real que uses en clase. Puede ser una ficha, guía, tarea o secuencia breve. No hace falta que esté perfecta: buscamos material real para orientar mejor la devolución.";
+  }
+  if (question.type === "textarea") {
+    return "Escribe una respuesta breve y concreta (3-6 líneas). Describe lo que haces realmente en el aula, evitando respuestas genéricas o ideales.";
+  }
+  if (question.type === "text") {
+    return "Escribe una respuesta corta y específica. Si puedes, usa ejemplos concretos de tu actividad para que la lectura final sea más útil.";
+  }
+  if (question.type === "select" || question.type === "single") {
+    return "Selecciona la opción que mejor describa tu práctica habitual, no la situación ideal ni una excepción puntual.";
+  }
+  if (question.type === "multi") {
+    return "Marca todas las opciones que te representen de forma frecuente. No hace falta marcar muchas: prioriza las que más impacto tienen en tu actividad.";
+  }
+  if (question.type === "scale") {
+    return "Valora esta dimensión según lo que ocurre en tu actividad real. Si dudas entre dos niveles, elige el nivel más conservador.";
+  }
+  return "Responde desde tu práctica real para que el diagnóstico sea preciso y accionable.";
 }
 
 function renderWizardStep() {

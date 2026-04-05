@@ -1,6 +1,6 @@
 import { CONFIG } from "./config.js?v=20260405i";
 import { BLOCKS, SCALE_OPTIONS } from "./questions.js?v=20260405i";
-import { getLevelLabel, getLevelMeaning, normalizeResult } from "./scoring.js?v=20260405i";
+import { getLevelLabel, normalizeResult } from "./scoring.js?v=20260405i";
 import {
   validarAcceso,
   validarSesion,
@@ -448,12 +448,10 @@ async function finishDiagnostic() {
 
 function renderDimensionCard(name, dim) {
   const level = getLevelLabel(dim.score || 0);
-  const meaning = getLevelMeaning(dim.score || 0);
+  const levelClass = getPriorityClass(dim.score || 0);
   return `
     <article class="diag-result-card">
-      <h3>${name}</h3>
-      <p><strong>Nivel:</strong> ${level}</p>
-      <p><strong>Qué significa:</strong> ${meaning}</p>
+      <h3 class="diag-dim-title">${name} <span class="diag-badge ${levelClass}">${level}</span></h3>
       <p><strong>Por qué importa:</strong> ${dim.importancia || ""}</p>
       <p><strong>Ajuste inicial recomendado:</strong> ${dim.ajuste || ""}</p>
     </article>
@@ -515,16 +513,18 @@ function renderVisualSummary(result) {
   const dimensiones = Object.entries(result.dimensiones || {});
   const total = dimensiones.length || 1;
   const avgScore = dimensiones.reduce((acc, [, dim]) => acc + (Number(dim.score) || 0), 0) / total;
+  const avgScoreRounded = Math.round(avgScore);
   const avgPct = toScorePercent(avgScore);
   const prioritario = dimensiones.filter(([, dim]) => (Number(dim.score) || 0) < 2).length;
   const solido = dimensiones.filter(([, dim]) => (Number(dim.score) || 0) >= 3).length;
   const barras = dimensiones.map(([name, dim]) => {
     const score = Number(dim.score) || 0;
+    const scoreRounded = Math.round(score);
     return `
       <div class="diag-bar-row">
         <div class="diag-bar-head">
           <span>${escapeHtml(name)}</span>
-          <span>${score.toFixed(1)}/4</span>
+          <span>${scoreRounded}/4</span>
         </div>
         <div class="diag-bar-track"><span style="width:${toScorePercent(score)}%"></span></div>
       </div>
@@ -536,7 +536,7 @@ function renderVisualSummary(result) {
       <h3>0. Panel visual rápido</h3>
       <div class="diag-kpis">
         <div class="diag-kpi">
-          <strong>${avgScore.toFixed(1)}/4</strong>
+          <strong>${avgScoreRounded}/4</strong>
           <span>Nivel global</span>
           <div class="diag-kpi-track"><span style="width:${avgPct}%"></span></div>
         </div>
@@ -563,17 +563,6 @@ function renderResult(result) {
   const ia = result.analisisIA || null;
   const lecturaDocumento = normalizeLecturaDocumento(ia);
   const ajustesPrioritarios = normalizeAjustesPrioritarios(ia);
-  const docDebug = ia?.documento_debug || null;
-  const docDebugHtml = docDebug ? `
-    <article class="diag-result-card">
-      <h3>6a. Estado de lectura del documento</h3>
-      <p><strong>Fuente de lectura:</strong> ${escapeHtml(docDebug.source || "")}</p>
-      <p><strong>Texto detectado:</strong> ${escapeHtml(String(docDebug.char_count || 0))} caracteres</p>
-      <p><strong>Legible:</strong> ${docDebug.readable ? "sí" : "no"}</p>
-      <p><strong>Estado:</strong> ${escapeHtml(docDebug.status || "")}</p>
-      ${docDebug.detail ? `<p><strong>Detalle técnico:</strong> ${escapeHtml(docDebug.detail)}</p>` : ""}
-    </article>
-  ` : "";
 
   const lecturaDocHtml = lecturaDocumento.length ? `
     <article class="diag-result-card">
@@ -597,7 +586,7 @@ function renderResult(result) {
 
   const ajustesHtml = ajustesPrioritarios.length ? `
     <article class="diag-result-card">
-      <h3>8. Ajustes prioritarios para tu próxima semana</h3>
+      <h3>8. Ajustes prioritarios</h3>
       <div class="diag-adjust-grid">
         ${ajustesPrioritarios.map((item) => `
           <article class="diag-adjust-card">
@@ -617,9 +606,10 @@ function renderResult(result) {
       const nivel = escapeHtml(row?.nivel || "");
       const evidencia = escapeHtml(row?.evidencia || "");
       const ajuste = escapeHtml(row?.ajuste || "");
+      const nivelClass = getPriorityClassFromLabel(row?.nivel || "");
       return `
         <li class="diag-matrix-item">
-          <p><strong>${criterio}</strong> <span class="diag-badge">${nivel}</span></p>
+          <p class="diag-matrix-title"><strong>${criterio}</strong> <span class="diag-badge ${nivelClass}">${nivel}</span></p>
           <p><strong>Evidencia:</strong> ${evidencia}</p>
           <p><strong>Ajuste:</strong> ${ajuste}</p>
         </li>
@@ -627,7 +617,7 @@ function renderResult(result) {
     })
     .join("");
   const iaHtml = ia ? `
-    ${docDebugHtml}
+    ${lecturaDocHtml}
     <article class="diag-result-card">
       <h3>6bis. Conclusión orientadora del análisis IA</h3>
       <p>${escapeHtml(ia.resumen_ia || "")}</p>
@@ -636,9 +626,8 @@ function renderResult(result) {
       ${renderSimpleList(ia.sugerencias_ia) ? `<p><strong>Sugerencias concretas:</strong></p>${renderSimpleList(ia.sugerencias_ia)}` : ""}
       <p><strong>Siguiente paso recomendado:</strong> ${escapeHtml(ia.siguiente_paso_ia || "")}</p>
     </article>
-    ${lecturaDocHtml}
     ${ajustesHtml}
-    ${matrizTgtcHtml ? `<article class="diag-result-card"><h3>9. Matriz metodológica TGTC</h3><ul class="diag-matrix">${matrizTgtcHtml}</ul></article>` : ""}
+    ${matrizTgtcHtml ? `<article class="diag-result-card"><h3>9. Orientaciones para cada dimensión</h3><ul class="diag-matrix">${matrizTgtcHtml}</ul></article>` : ""}
   ` : "";
 
   resultRoot.innerHTML = `
@@ -665,11 +654,27 @@ function renderResult(result) {
     </article>
     <article class="diag-result-card">
       <h3>6. Tu siguiente paso recomendado</h3>
-      <p>${escapeHtml(result.primerPaso || "")}</p>
       <p>${escapeHtml(result.cierre || "")}</p>
     </article>
     ${iaHtml}
   `;
+}
+
+function getPriorityClass(score) {
+  const s = Number(score) || 0;
+  if (s < 2) return "diag-priority-high";
+  if (s < 2.75) return "diag-priority-medium";
+  if (s < 3.5) return "diag-priority-low";
+  return "diag-priority-ok";
+}
+
+function getPriorityClassFromLabel(label) {
+  const t = String(label || "").toLowerCase();
+  if (t.includes("prioritario")) return "diag-priority-high";
+  if (t.includes("desarrollo") || t.includes("estructura")) return "diag-priority-medium";
+  if (t.includes("resuelto")) return "diag-priority-low";
+  if (t.includes("sólido") || t.includes("solido")) return "diag-priority-ok";
+  return "diag-priority-medium";
 }
 
 async function forceLogout(message = "") {

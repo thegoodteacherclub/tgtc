@@ -95,7 +95,7 @@ export const BLOCKS = [
       { id: "f_proposito", label: "El alumnado puede entender qué se espera que aprenda", type: "scale", required: true, dimension: "Propósito" },
       { id: "f_secuencia", label: "La actividad avanza paso a paso sin sobrecargar", type: "scale", required: true, dimension: "Secuencia" },
       { id: "f_apoyos", label: "Hay ejemplos, modelos o preguntas guía", type: "scale", required: true, dimension: "Apoyos" },
-      { id: "f_cognitiva", label: "La tarea obliga a pensar, no solo completar", type: "scale", required: true, dimension: "Activación cognitiva" },
+      { id: "f_cognitiva", label: "La tarea obliga a pensar, no solo completar", type: "scale", required: true, dimension: "Procesos de pensamiento" },
       { id: "f_material", label: "El material orienta de un vistazo", type: "scale", required: true, dimension: "Diseño del material" },
       { id: "f_autonomia", label: "La dificultad está graduada y favorece autonomía", type: "scale", required: true, dimension: "Autonomía del alumnado" },
       { id: "f_cierre", label: "Hay cierre que consolida y recoge evidencia", type: "scale", required: true, dimension: "Cierre y evaluación" },

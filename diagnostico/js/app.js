@@ -1,6 +1,6 @@
-import { CONFIG } from "./config.js?v=20260405b";
-import { BLOCKS, SCALE_OPTIONS } from "./questions.js?v=20260405b";
-import { getLevelLabel, getLevelMeaning, normalizeResult } from "./scoring.js?v=20260405b";
+import { CONFIG } from "./config.js?v=20260405c";
+import { BLOCKS, SCALE_OPTIONS } from "./questions.js?v=20260405c";
+import { getLevelLabel, getLevelMeaning, normalizeResult } from "./scoring.js?v=20260405c";
 import {
   validarAcceso,
   validarSesion,
@@ -10,7 +10,7 @@ import {
   analizarActividadIA,
   obtenerResultado,
   logoutSesion
-} from "./api.js?v=20260405b";
+} from "./api.js?v=20260405c";
 
 const app = document.querySelector("[data-app]");
 const screens = Array.from(document.querySelectorAll("[data-screen]"));
@@ -338,17 +338,31 @@ async function saveStepAndContinue() {
 }
 
 async function finishDiagnostic() {
+  let iaWarning = "";
   try {
     showLoader("Generando devolución final...");
     await enviarDiagnosticoFinal(state.token, state.answers);
     if (state.answers.u_archivo_file_id && state.answers.u_archivo_uploaded === true) {
-      showLoader("Analizando actividad con IA...");
-      await analizarActividadIA(state.token);
+      try {
+        showLoader("Analizando actividad con IA...");
+        await analizarActividadIA(state.token);
+      } catch (error) {
+        iaWarning = error?.message || "No se ha podido completar el análisis con IA en este momento.";
+      }
     }
     const resultResponse = await obtenerResultado(state.token);
     state.finalResult = normalizeResult(resultResponse.resultado);
     renderResult(state.finalResult);
     showScreen("resultado");
+    if (iaWarning) {
+      setAlert(accesoAlert, "");
+      setAlert(wizardAlert, "");
+      // Mostramos aviso no bloqueante en la pantalla de resultado.
+      resultRoot.insertAdjacentHTML(
+        "afterbegin",
+        `<p class="diag-alert">Se ha generado tu resultado base. ${escapeHtml(iaWarning)}</p>`
+      );
+    }
   } catch (error) {
     if (error.code === "SESSION_INVALID") {
       await forceLogout("La sesión ha caducado. Vuelve a acceder.");

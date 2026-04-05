@@ -25,6 +25,26 @@ export const BLOCKS = [
     ]
   },
   {
+    id: "U",
+    title: "Bloque U. Actividad real",
+    subtitle: "Sube la actividad real para complementar el análisis con IA.",
+    questions: [
+      {
+        id: "u_archivo",
+        label: "Sube tu actividad (PDF, DOCX, TXT o imagen)",
+        type: "file",
+        required: true,
+        accept: ".pdf,.doc,.docx,.txt,.md,.png,.jpg,.jpeg"
+      },
+      {
+        id: "u_resumen_actividad",
+        label: "Contexto breve de la actividad (qué pide y qué esperas que logren)",
+        type: "textarea",
+        required: true
+      }
+    ]
+  },
+  {
     id: "C",
     title: "Bloque C. Qué ya funciona",
     subtitle: "Reconocemos fortalezas percibidas con criterio.",

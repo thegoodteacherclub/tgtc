@@ -116,6 +116,11 @@ h2 {
   line-height: 1.7;
 }
 
+.diag-help {
+  margin: 6px 0 0;
+  font-size: 0.92rem;
+}
+
 .diag-form {
   display: grid;
   gap: 14px;

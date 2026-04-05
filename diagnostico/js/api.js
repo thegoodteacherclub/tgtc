@@ -36,8 +36,16 @@ export function guardarRespuesta(token, bloque, respuestas) {
   return request("guardarRespuesta", { token, bloque, respuestas });
 }
 
+export function subirActividad(token, filePayload) {
+  return request("subirActividad", Object.assign({ token }, filePayload));
+}
+
 export function enviarDiagnosticoFinal(token, respuestas) {
   return request("enviarDiagnosticoFinal", { token, respuestas });
+}
+
+export function analizarActividadIA(token) {
+  return request("analizarActividadIA", { token });
 }
 
 export function obtenerResultado(token) {

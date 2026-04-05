@@ -368,6 +368,10 @@ h2 {
   color: var(--muted);
 }
 
+.diag-result-card strong {
+  color: var(--purple-deep);
+}
+
 .diag-result-card ul {
   margin: 0;
   padding-left: 18px;
@@ -497,6 +501,43 @@ h2 {
   color: var(--purple-deep);
   font-size: 0.78rem;
   margin-left: 6px;
+}
+
+.diag-priority-high {
+  border-color: #b42318;
+  background: #fee4e2;
+  color: #b42318;
+}
+
+.diag-priority-medium {
+  border-color: #b54708;
+  background: #fff3e0;
+  color: #b54708;
+}
+
+.diag-priority-low {
+  border-color: #2e90fa;
+  background: #eaf3ff;
+  color: #175cd3;
+}
+
+.diag-priority-ok {
+  border-color: #027a48;
+  background: #e8f7ef;
+  color: #027a48;
+}
+
+.diag-dim-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.diag-matrix-title {
+  margin: 0 0 8px;
+  color: var(--text) !important;
+  font-weight: 800;
 }
 
 .diag-loader {

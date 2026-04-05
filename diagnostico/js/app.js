@@ -1,6 +1,6 @@
-import { CONFIG } from "./config.js?v=20260405d";
-import { BLOCKS, SCALE_OPTIONS } from "./questions.js?v=20260405d";
-import { getLevelLabel, getLevelMeaning, normalizeResult } from "./scoring.js?v=20260405d";
+import { CONFIG } from "./config.js?v=20260405e";
+import { BLOCKS, SCALE_OPTIONS } from "./questions.js?v=20260405e";
+import { getLevelLabel, getLevelMeaning, normalizeResult } from "./scoring.js?v=20260405e";
 import {
   validarAcceso,
   validarSesion,
@@ -10,7 +10,7 @@ import {
   analizarActividadIA,
   obtenerResultado,
   logoutSesion
-} from "./api.js?v=20260405d";
+} from "./api.js?v=20260405e";
 
 const app = document.querySelector("[data-app]");
 const screens = Array.from(document.querySelectorAll("[data-screen]"));
@@ -460,12 +460,83 @@ function renderDimensionCard(name, dim) {
   `;
 }
 
+function toScorePercent(score) {
+  const numeric = Number(score) || 0;
+  return Math.max(0, Math.min(100, (numeric / 4) * 100));
+}
+
+function shortList(list, max = 3) {
+  return (Array.isArray(list) ? list : []).slice(0, max);
+}
+
+function renderVisualSummary(result) {
+  const dimensiones = Object.entries(result.dimensiones || {});
+  const total = dimensiones.length || 1;
+  const avgScore = dimensiones.reduce((acc, [, dim]) => acc + (Number(dim.score) || 0), 0) / total;
+  const avgPct = toScorePercent(avgScore);
+  const prioritario = dimensiones.filter(([, dim]) => (Number(dim.score) || 0) < 2).length;
+  const solido = dimensiones.filter(([, dim]) => (Number(dim.score) || 0) >= 3).length;
+  const barras = dimensiones.map(([name, dim]) => {
+    const score = Number(dim.score) || 0;
+    return `
+      <div class="diag-bar-row">
+        <div class="diag-bar-head">
+          <span>${escapeHtml(name)}</span>
+          <span>${score.toFixed(1)}/4</span>
+        </div>
+        <div class="diag-bar-track"><span style="width:${toScorePercent(score)}%"></span></div>
+      </div>
+    `;
+  }).join("");
+
+  return `
+    <article class="diag-result-card diag-visual">
+      <h3>0. Panel visual rápido</h3>
+      <div class="diag-kpis">
+        <div class="diag-kpi">
+          <strong>${avgScore.toFixed(1)}/4</strong>
+          <span>Nivel global</span>
+          <div class="diag-kpi-track"><span style="width:${avgPct}%"></span></div>
+        </div>
+        <div class="diag-kpi">
+          <strong>${prioritario}</strong>
+          <span>Dimensiones prioritarias</span>
+        </div>
+        <div class="diag-kpi">
+          <strong>${solido}</strong>
+          <span>Dimensiones sólidas</span>
+        </div>
+      </div>
+      <div class="diag-bars">${barras}</div>
+    </article>
+  `;
+}
+
 function renderResult(result) {
+  const visualHtml = renderVisualSummary(result);
   const dimensionesHtml = Object.entries(result.dimensiones || {})
     .map(([name, data]) => renderDimensionCard(name, data))
     .join("");
 
   const ia = result.analisisIA || null;
+  const evidenciasDocHtml = (ia?.evidencias_documento_ia || [])
+    .map((item) => `<li>${escapeHtml(item)}</li>`)
+    .join("");
+  const matrizTgtcHtml = (ia?.matriz_tgtc_ia || [])
+    .map((row) => {
+      const criterio = escapeHtml(row?.criterio || "");
+      const nivel = escapeHtml(row?.nivel || "");
+      const evidencia = escapeHtml(row?.evidencia || "");
+      const ajuste = escapeHtml(row?.ajuste || "");
+      return `
+        <li class="diag-matrix-item">
+          <p><strong>${criterio}</strong> <span class="diag-badge">${nivel}</span></p>
+          <p><strong>Evidencia:</strong> ${evidencia}</p>
+          <p><strong>Ajuste:</strong> ${ajuste}</p>
+        </li>
+      `;
+    })
+    .join("");
   const iaHtml = ia ? `
     <article class="diag-result-card">
       <h3>7. Lectura ampliada con IA sobre tu actividad real</h3>
@@ -476,22 +547,25 @@ function renderResult(result) {
       <ul>${(ia.riesgos_ia || []).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
       <p><strong>Sugerencias concretas:</strong></p>
       <ul>${(ia.sugerencias_ia || []).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
+      ${evidenciasDocHtml ? `<p><strong>Evidencias del documento analizado:</strong></p><ul>${evidenciasDocHtml}</ul>` : ""}
+      ${matrizTgtcHtml ? `<p><strong>Matriz metodológica TGTC:</strong></p><ul class="diag-matrix">${matrizTgtcHtml}</ul>` : ""}
       <p><strong>Siguiente paso recomendado:</strong> ${escapeHtml(ia.siguiente_paso_ia || "")}</p>
     </article>
   ` : "";
 
   resultRoot.innerHTML = `
+    ${visualHtml}
     <article class="diag-result-card">
       <h3>1. Resumen general</h3>
-      <p>${result.resumen}</p>
+      <p>${escapeHtml(result.resumen || "")}</p>
     </article>
     <article class="diag-result-card">
       <h3>2. Lo que ya sostienes bien</h3>
-      <ul>${(result.fortalezas || []).map((item) => `<li>${item}</li>`).join("")}</ul>
+      <ul>${shortList(result.fortalezas, 3).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
     </article>
     <article class="diag-result-card">
       <h3>3. Lo que hoy está frenando más la calidad</h3>
-      <ul>${(result.frenos || []).map((item) => `<li>${item}</li>`).join("")}</ul>
+      <ul>${shortList(result.frenos, 3).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
     </article>
     <article class="diag-result-card">
       <h3>4. Lectura por dimensiones</h3>
@@ -499,12 +573,12 @@ function renderResult(result) {
     </article>
     <article class="diag-result-card">
       <h3>5. Tus 3 prioridades de mejora</h3>
-      <ul>${(result.prioridades || []).slice(0, 3).map((item) => `<li>${item}</li>`).join("")}</ul>
+      <ul>${shortList(result.prioridades, 3).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
     </article>
     <article class="diag-result-card">
       <h3>6. Tu siguiente paso recomendado</h3>
-      <p>${result.primerPaso}</p>
-      <p>${result.cierre}</p>
+      <p>${escapeHtml(result.primerPaso || "")}</p>
+      <p>${escapeHtml(result.cierre || "")}</p>
     </article>
     ${iaHtml}
   `;

@@ -314,8 +314,10 @@ async function saveStepAndContinue() {
         });
         state.answers[`${f.questionId}_file_id`] = uploaded.file_id;
         state.answers[`${f.questionId}_nombre`] = uploaded.nombre;
+        state.answers[`${f.questionId}_uploaded`] = true;
         current.payload[`${f.questionId}_file_id`] = uploaded.file_id;
         current.payload[`${f.questionId}_nombre`] = uploaded.nombre;
+        current.payload[`${f.questionId}_uploaded`] = true;
       }
     }
     await guardarRespuesta(state.token, current.blockId, current.payload);
@@ -344,7 +346,7 @@ async function finishDiagnostic() {
   try {
     showLoader("Generando devolución final...");
     await enviarDiagnosticoFinal(state.token, state.answers);
-    if (state.answers.u_archivo_file_id) {
+    if (state.answers.u_archivo_file_id && state.answers.u_archivo_uploaded === true) {
       showLoader("Analizando actividad con IA...");
       await analizarActividadIA(state.token);
     }
@@ -505,6 +507,8 @@ formAcceso.addEventListener("submit", async (event) => {
     const res = await validarAcceso(email, codigo);
     setSession(res.token);
     state.email = email;
+    state.answers = {};
+    persistLocalDraft();
     showScreen("intro");
   } catch (error) {
     setAlert(accesoAlert, error.message || "No se ha podido validar el acceso.");

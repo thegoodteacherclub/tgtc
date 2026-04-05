@@ -466,6 +466,29 @@ h2 {
   margin: 0 0 6px;
 }
 
+.diag-evidence-grid,
+.diag-adjust-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.diag-evidence-card,
+.diag-adjust-card {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px;
+  background: #fff;
+}
+
+.diag-evidence-quote {
+  margin: 0 0 8px;
+  padding: 8px 10px;
+  border-left: 4px solid var(--purple);
+  background: #faf6ff;
+  color: var(--purple-deep) !important;
+  font-weight: 600;
+}
+
 .diag-badge {
   display: inline-block;
   padding: 2px 8px;

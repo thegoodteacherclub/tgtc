@@ -33,14 +33,14 @@ export const BLOCKS = [
         id: "u_archivo",
         label: "Sube tu actividad (PDF, DOCX, TXT o imagen)",
         type: "file",
-        required: true,
+        required: false,
         accept: ".pdf,.doc,.docx,.txt,.md,.png,.jpg,.jpeg"
       },
       {
         id: "u_resumen_actividad",
         label: "Contexto breve de la actividad (qué pide y qué esperas que logren)",
         type: "textarea",
-        required: true
+        required: false
       }
     ]
   },

@@ -1,6 +1,6 @@
-import { CONFIG } from "./config.js?v=20260405f";
-import { BLOCKS, SCALE_OPTIONS } from "./questions.js?v=20260405f";
-import { getLevelLabel, getLevelMeaning, normalizeResult } from "./scoring.js?v=20260405f";
+import { CONFIG } from "./config.js?v=20260405g";
+import { BLOCKS, SCALE_OPTIONS } from "./questions.js?v=20260405g";
+import { getLevelLabel, getLevelMeaning, normalizeResult } from "./scoring.js?v=20260405g";
 import {
   validarAcceso,
   validarSesion,
@@ -10,7 +10,7 @@ import {
   analizarActividadIA,
   obtenerResultado,
   logoutSesion
-} from "./api.js?v=20260405f";
+} from "./api.js?v=20260405g";
 
 const app = document.querySelector("[data-app]");
 const screens = Array.from(document.querySelectorAll("[data-screen]"));
@@ -563,6 +563,16 @@ function renderResult(result) {
   const ia = result.analisisIA || null;
   const lecturaDocumento = normalizeLecturaDocumento(ia);
   const ajustesPrioritarios = normalizeAjustesPrioritarios(ia);
+  const docDebug = ia?.documento_debug || null;
+  const docDebugHtml = docDebug ? `
+    <article class="diag-result-card">
+      <h3>6a. Estado de lectura del documento</h3>
+      <p><strong>Fuente de lectura:</strong> ${escapeHtml(docDebug.source || "")}</p>
+      <p><strong>Texto detectado:</strong> ${escapeHtml(String(docDebug.char_count || 0))} caracteres</p>
+      <p><strong>Legible:</strong> ${docDebug.readable ? "sí" : "no"}</p>
+      <p><strong>Estado:</strong> ${escapeHtml(docDebug.status || "")}</p>
+    </article>
+  ` : "";
 
   const lecturaDocHtml = lecturaDocumento.length ? `
     <article class="diag-result-card">
@@ -616,6 +626,7 @@ function renderResult(result) {
     })
     .join("");
   const iaHtml = ia ? `
+    ${docDebugHtml}
     <article class="diag-result-card">
       <h3>6bis. Conclusión orientadora del análisis IA</h3>
       <p>${escapeHtml(ia.resumen_ia || "")}</p>

@@ -29,6 +29,8 @@ const nextButton = document.querySelector("[data-next]");
 const prevButton = document.querySelector("[data-prev]");
 const reviewButton = document.querySelector("[data-review]");
 const resultRoot = document.querySelector("[data-resultado]");
+const debugParams = new URLSearchParams(window.location.search);
+const DEBUG_MODE = debugParams.get("debug") === "1";
 
 const state = {
   token: null,
@@ -80,6 +82,76 @@ function loadLocalDraft() {
 
 function persistLocalDraft() {
   localStorage.setItem(CONFIG.DRAFT_KEY, JSON.stringify(state.answers));
+}
+
+function prefillDebugAnswers() {
+  BLOCKS.forEach((block) => {
+    block.questions.forEach((question) => {
+      if (!question.required || state.answers[question.id] !== undefined) {
+        return;
+      }
+      if (question.type === "text") {
+        state.answers[question.id] = "Respuesta de prueba";
+        return;
+      }
+      if (question.type === "textarea") {
+        state.answers[question.id] = "Texto de prueba para validación rápida.";
+        return;
+      }
+      if (question.type === "select" || question.type === "single") {
+        state.answers[question.id] = (question.options && question.options[0]) || "";
+        return;
+      }
+      if (question.type === "multi") {
+        state.answers[question.id] = (question.options && question.options[0]) ? [question.options[0]] : [];
+        return;
+      }
+      if (question.type === "scale") {
+        state.answers[question.id] = SCALE_OPTIONS[0]?.value || 1;
+      }
+    });
+  });
+
+  const debugFileId = String(debugParams.get("fileId") || "").trim();
+  if (debugFileId) {
+    state.answers.u_archivo_file_id = debugFileId;
+    state.answers.u_archivo_nombre = state.answers.u_archivo_nombre || "archivo-debug";
+  }
+}
+
+function getDebugStep() {
+  const raw = String(debugParams.get("step") || "").trim().toLowerCase();
+  if (!raw) return null;
+  if (raw === "last") return BLOCKS.length - 1;
+  const asNumber = Number(raw);
+  if (Number.isInteger(asNumber) && asNumber >= 1 && asNumber <= BLOCKS.length) {
+    return asNumber - 1;
+  }
+  const idx = BLOCKS.findIndex((b) => String(b.id || "").toLowerCase() === raw);
+  return idx >= 0 ? idx : null;
+}
+
+function applyDebugNavigationOptions() {
+  if (!(DEBUG_MODE && debugParams.get("autostart") === "1")) {
+    return;
+  }
+
+  if (debugParams.get("autofill") === "1") {
+    prefillDebugAnswers();
+    persistLocalDraft();
+  }
+
+  const forcedStep = getDebugStep();
+  if (forcedStep !== null) {
+    state.step = forcedStep;
+  }
+
+  showScreen("wizard");
+  renderWizardStep();
+
+  if (debugParams.get("autorun") === "1" && state.step === BLOCKS.length - 1) {
+    finishDiagnostic();
+  }
 }
 
 function renderField(question) {
@@ -494,6 +566,7 @@ async function bootstrapSessionIfExists() {
     setSession(token);
     state.email = res.email || "";
     showScreen("intro");
+    applyDebugNavigationOptions();
   } catch (_) {
     clearSession();
     showScreen("acceso");
@@ -527,6 +600,16 @@ formAcceso.addEventListener("submit", async (event) => {
 });
 
 startButton.addEventListener("click", () => {
+  if (DEBUG_MODE && debugParams.get("autofill") === "1") {
+    prefillDebugAnswers();
+    persistLocalDraft();
+  }
+  if (DEBUG_MODE) {
+    const forcedStep = getDebugStep();
+    if (forcedStep !== null) {
+      state.step = forcedStep;
+    }
+  }
   showScreen("wizard");
   renderWizardStep();
 });
@@ -548,5 +631,20 @@ reviewButton.addEventListener("click", () => {
 logoutButtons.forEach((btn) => btn.addEventListener("click", handleLogout));
 
 if (app) {
+  if (DEBUG_MODE) {
+    window.__diagDebug = {
+      state,
+      prefillDebugAnswers,
+      finishDiagnostic,
+      goToStep(step) {
+        const n = Number(step);
+        if (Number.isInteger(n) && n >= 1 && n <= BLOCKS.length) {
+          state.step = n - 1;
+          showScreen("wizard");
+          renderWizardStep();
+        }
+      }
+    };
+  }
   bootstrapSessionIfExists();
 }

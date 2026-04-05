@@ -122,38 +122,51 @@ h2 {
 }
 
 .diag-help-toggle {
-  margin-top: 8px;
-  border: 1px dashed #6e2ea64d;
-  border-radius: 12px;
-  background: #fcf9fe;
-  padding: 8px 10px;
+  position: relative;
+  display: inline-block;
+  margin-top: 6px;
 }
 
 .diag-help-toggle summary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  border: 1px solid #6e2ea659;
+  background: #ffffff;
   cursor: pointer;
   color: #53207f;
-  font-size: 0.9rem;
+  font-size: 0.8rem;
   font-weight: 700;
   list-style: none;
+  line-height: 1;
 }
 
 .diag-help-toggle summary::-webkit-details-marker {
   display: none;
 }
 
-.diag-help-toggle summary::before {
-  content: "+ ";
-}
-
-.diag-help-toggle[open] summary::before {
-  content: "- ";
-}
-
 .diag-help-toggle p {
-  margin: 8px 0 0;
+  position: absolute;
+  z-index: 10;
+  top: 28px;
+  left: 0;
+  width: min(360px, calc(100vw - 80px));
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid #6e2ea640;
+  border-radius: 10px;
+  background: #fcf9fe;
+  box-shadow: 0 10px 24px rgba(38, 19, 54, 0.12);
   color: var(--muted);
   line-height: 1.6;
-  font-size: 0.92rem;
+  font-size: 0.88rem;
+}
+
+.diag-help-toggle p strong {
+  color: var(--purple-deep);
 }
 
 .diag-form {

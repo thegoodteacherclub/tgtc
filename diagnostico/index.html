@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Diagnóstico inicial | The Good Teacher Club</title>
+  <meta name="robots" content="noindex, nofollow, noarchive, nosnippet">
+  <meta name="googlebot" content="noindex, nofollow, noarchive, nosnippet">
+  <link rel="icon" type="image/png" href="../favicon-symbol.png?v=2">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./diagnostico.css">
+</head>
+<body>
+  <main class="diag-main" data-app>
+    <section class="diag-shell">
+      <header class="diag-head">
+        <img src="../logo.png" alt="The Good Teacher Club" class="diag-logo">
+        <button class="diag-logout" type="button" data-logout hidden>Cerrar sesión</button>
+      </header>
+
+      <section class="diag-card" data-screen="acceso">
+        <p class="diag-eyebrow">Diagnóstico inicial</p>
+        <h1>Una revisión guiada para detectar qué ya funciona y qué conviene mejorar primero.</h1>
+        <p class="diag-lead">No vamos a evaluar tu forma de enseñar en abstracto. Vamos a revisar una actividad real.</p>
+        <form class="diag-form" data-form-acceso novalidate>
+          <label class="diag-field">
+            <span>Email profesional</span>
+            <input type="email" name="email" autocomplete="email" required placeholder="tu@email.com">
+          </label>
+          <label class="diag-field">
+            <span>Código de acceso</span>
+            <input type="text" name="codigo" required placeholder="Código recibido" maxlength="32">
+          </label>
+          <button class="diag-btn diag-btn-primary" type="submit">Acceder</button>
+        </form>
+        <p class="diag-alert" data-acceso-alert hidden role="alert"></p>
+      </section>
+
+      <section class="diag-card" data-screen="intro" hidden>
+        <p class="diag-eyebrow">Antes de empezar</p>
+        <h2>Esto no es un test genérico.</h2>
+        <div class="diag-copy">
+          <p>Muchas actividades funcionan, pero no todas están igual de bien construidas.</p>
+          <p>No se trata de hacer más. Se trata de detectar qué conviene diseñar mejor primero.</p>
+          <p>Al final recibirás una lectura clara de fortalezas, frenos y prioridades de mejora aplicables.</p>
+        </div>
+        <div class="diag-actions">
+          <button class="diag-btn diag-btn-primary" type="button" data-start>Empezar diagnóstico</button>
+        </div>
+      </section>
+
+      <section class="diag-card" data-screen="wizard" hidden>
+        <div class="diag-progress-wrap">
+          <p class="diag-progress-text" data-progress-text>Paso 1 de 8</p>
+          <div class="diag-progress" aria-hidden="true">
+            <span data-progress-fill></span>
+          </div>
+        </div>
+        <div data-wizard-content></div>
+        <p class="diag-alert" data-wizard-alert hidden role="alert"></p>
+        <div class="diag-actions diag-actions-split">
+          <button class="diag-btn diag-btn-secondary" type="button" data-prev>Anterior</button>
+          <button class="diag-btn diag-btn-primary" type="button" data-next>Siguiente</button>
+        </div>
+      </section>
+
+      <section class="diag-card" data-screen="resultado" hidden>
+        <p class="diag-eyebrow">Diagnóstico completado</p>
+        <h2>Lectura de tu actividad</h2>
+        <div class="diag-result" data-resultado></div>
+        <div class="diag-actions diag-actions-split">
+          <button class="diag-btn diag-btn-secondary" type="button" data-review>Volver a revisar respuestas</button>
+          <button class="diag-btn diag-btn-primary" type="button" data-logout-2>Cerrar sesión</button>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <div class="diag-loader" data-loader hidden>
+    <div class="diag-loader-box">
+      <span class="diag-spinner" aria-hidden="true"></span>
+      <p data-loader-text>Procesando...</p>
+    </div>
+  </div>
+
+  <script type="module" src="./js/app.js"></script>
+</body>
+</html>

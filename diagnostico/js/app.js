@@ -616,43 +616,54 @@ function renderResult(result) {
       `;
     })
     .join("");
-  const iaHtml = ia ? `
-    ${lecturaDocHtml}
-    <article class="diag-result-card">
-      <h3>7. Conclusión orientadora del análisis IA</h3>
-      <p>${escapeHtml(ia.resumen_ia || "")}</p>
-      ${renderSimpleList(ia.fortalezas_ia) ? `<p><strong>Fortalezas clave:</strong></p>${renderSimpleList(ia.fortalezas_ia)}` : ""}
-      ${renderSimpleList(ia.riesgos_ia) ? `<p><strong>Riesgos que conviene atacar ya:</strong></p>${renderSimpleList(ia.riesgos_ia)}` : ""}
-      ${renderSimpleList(ia.sugerencias_ia) ? `<p><strong>Sugerencias concretas:</strong></p>${renderSimpleList(ia.sugerencias_ia)}` : ""}
-      <p><strong>Siguiente paso recomendado:</strong> ${escapeHtml(ia.siguiente_paso_ia || "")}</p>
-    </article>
-    ${ajustesHtml}
-    ${matrizTgtcHtml ? `<article class="diag-result-card"><h3>9. Orientaciones para cada dimensión</h3><ul class="diag-matrix">${matrizTgtcHtml}</ul></article>` : ""}
+  const docAnalysisHtml = ia ? `
+    <section class="diag-section-group diag-doc-group">
+      <article class="diag-result-card diag-section-head">
+        <h3>Análisis del documento que has aportado</h3>
+        <p>Este bloque se genera solo si has subido un documento.</p>
+      </article>
+      ${lecturaDocHtml}
+      <article class="diag-result-card">
+        <h3>7. Conclusión orientadora del análisis IA</h3>
+        <p>${escapeHtml(ia.resumen_ia || "")}</p>
+        ${renderSimpleList(ia.fortalezas_ia) ? `<p><strong>Fortalezas clave:</strong></p>${renderSimpleList(ia.fortalezas_ia)}` : ""}
+        ${renderSimpleList(ia.riesgos_ia) ? `<p><strong>Riesgos que conviene atacar ya:</strong></p>${renderSimpleList(ia.riesgos_ia)}` : ""}
+        ${renderSimpleList(ia.sugerencias_ia) ? `<p><strong>Sugerencias concretas:</strong></p>${renderSimpleList(ia.sugerencias_ia)}` : ""}
+        <p><strong>Siguiente paso recomendado:</strong> ${escapeHtml(ia.siguiente_paso_ia || "")}</p>
+      </article>
+      ${ajustesHtml}
+      ${matrizTgtcHtml ? `<article class="diag-result-card"><h3>9. Orientaciones para cada dimensión</h3><ul class="diag-matrix">${matrizTgtcHtml}</ul></article>` : ""}
+    </section>
   ` : "";
 
   resultRoot.innerHTML = `
     ${visualHtml}
-    <article class="diag-result-card">
-      <h3>1. Resumen general</h3>
-      <p>${escapeHtml(result.resumen || "")}</p>
-    </article>
-    <article class="diag-result-card">
-      <h3>2. Lo que ya sostienes bien</h3>
-      <ul>${shortList(result.fortalezas, 3).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
-    </article>
-    <article class="diag-result-card">
-      <h3>3. Lo que hoy está frenando más la calidad</h3>
-      <ul>${shortList(result.frenos, 3).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
-    </article>
-    <article class="diag-result-card">
-      <h3>4. Lectura por dimensiones</h3>
-      <div class="diag-result">${dimensionesHtml}</div>
-    </article>
-    <article class="diag-result-card">
-      <h3>5. Tus 3 prioridades de mejora</h3>
-      <ul>${shortList(result.prioridades, 3).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
-    </article>
-    ${iaHtml}
+    <section class="diag-section-group">
+      <article class="diag-result-card diag-section-head">
+        <h3>Análisis de tus respuestas y contexto</h3>
+      </article>
+      <article class="diag-result-card">
+        <h3>1. Resumen general</h3>
+        <p>${escapeHtml(result.resumen || "")}</p>
+      </article>
+      <article class="diag-result-card">
+        <h3>2. Lo que ya sostienes bien</h3>
+        <ul>${shortList(result.fortalezas, 3).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
+      </article>
+      <article class="diag-result-card">
+        <h3>3. Lo que hoy está frenando más la calidad</h3>
+        <ul>${shortList(result.frenos, 3).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
+      </article>
+      <article class="diag-result-card">
+        <h3>4. Lectura por dimensiones</h3>
+        <div class="diag-result">${dimensionesHtml}</div>
+      </article>
+      <article class="diag-result-card">
+        <h3>5. Tus 3 prioridades de mejora</h3>
+        <ul>${shortList(result.prioridades, 3).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
+      </article>
+    </section>
+    ${docAnalysisHtml}
   `;
 }
 

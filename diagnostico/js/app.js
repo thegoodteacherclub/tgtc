@@ -510,6 +510,17 @@ function normalizeAjustesPrioritarios(ia) {
     .slice(0, 4);
 }
 
+function removeScoreMentions(text) {
+  return String(text || "")
+    .replace(/\bscore\s*[:=]?\s*\d+(\.\d+)?\b/gi, "")
+    .replace(/\bpuntuaci[oó]n\s*[:=]?\s*\d+(\.\d+)?\b/gi, "")
+    .replace(/\(\s*\)/g, "")
+    .replace(/\s{2,}/g, " ")
+    .replace(/\s+,/g, ",")
+    .replace(/\s+;/g, ";")
+    .trim();
+}
+
 function renderVisualSummary(result) {
   const dimensiones = Object.entries(result.dimensiones || {});
   const total = dimensiones.length || 1;
@@ -605,7 +616,7 @@ function renderResult(result) {
     .map((row) => {
       const criterio = escapeHtml(row?.criterio || "");
       const nivel = escapeHtml(row?.nivel || "");
-      const evidencia = escapeHtml(row?.evidencia || "");
+      const evidencia = escapeHtml(removeScoreMentions(row?.evidencia || ""));
       const ajuste = escapeHtml(row?.ajuste || "");
       const nivelClass = getPriorityClassFromLabel(row?.nivel || "");
       return `
@@ -668,12 +679,6 @@ function renderResult(result) {
   `;
 }
 
-function getStylesheetLinksHtml() {
-  return Array.from(document.querySelectorAll('link[rel="stylesheet"]'))
-    .map((link) => `<link rel="stylesheet" href="${escapeHtml(link.href)}">`)
-    .join("\n");
-}
-
 function downloadResultPdf() {
   const resultHtml = String(resultRoot?.innerHTML || "").trim();
   if (!resultHtml) {
@@ -681,109 +686,30 @@ function downloadResultPdf() {
     return;
   }
 
-  const printWindow = window.open("", "_blank", "noopener,noreferrer");
-  if (!printWindow) {
-    window.alert("No se pudo abrir la ventana de impresión. Revisa si tu navegador bloquea ventanas emergentes.");
-    return;
-  }
-
   const generatedAt = new Date().toLocaleString("es-ES", {
     dateStyle: "long",
     timeStyle: "short"
   });
-  const stylesheets = getStylesheetLinksHtml();
+  const printHead = document.createElement("div");
+  printHead.className = "diag-print-head";
+  printHead.innerHTML = `
+    <h1>Diagnóstico inicial · The Good Teacher Club</h1>
+    <p>Generado el ${escapeHtml(generatedAt)}</p>
+  `;
+  resultRoot.prepend(printHead);
+  document.body.classList.add("diag-print-mode");
 
-  printWindow.document.open();
-  printWindow.document.write(`
-    <!DOCTYPE html>
-    <html lang="es">
-    <head>
-      <meta charset="UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>Diagnóstico TGTC</title>
-      ${stylesheets}
-      <style>
-        body {
-          margin: 0;
-          background: #ffffff;
-          color: #261336;
-          font-family: "Manrope", "Segoe UI", sans-serif;
-        }
-
-        .diag-pdf-root {
-          max-width: 980px;
-          margin: 0 auto;
-          padding: 22px;
-        }
-
-        .diag-pdf-head {
-          margin-bottom: 16px;
-          padding: 14px 16px;
-          border: 1px solid #5c338924;
-          border-radius: 16px;
-          background: linear-gradient(180deg, #ffffff 0%, #f8f3ff 100%);
-        }
-
-        .diag-pdf-head h1 {
-          margin: 0 0 6px;
-          font-family: "Plus Jakarta Sans", "Manrope", sans-serif;
-          font-size: 1.5rem;
-          letter-spacing: -0.02em;
-        }
-
-        .diag-pdf-head p {
-          margin: 0;
-          color: #6b5a78;
-        }
-
-        .diag-result-card,
-        .diag-evidence-card,
-        .diag-adjust-card,
-        .diag-matrix-item {
-          break-inside: avoid;
-          page-break-inside: avoid;
-        }
-
-        @page {
-          size: A4;
-          margin: 10mm;
-        }
-
-        @media print {
-          body {
-            -webkit-print-color-adjust: exact;
-            print-color-adjust: exact;
-          }
-        }
-      </style>
-    </head>
-    <body>
-      <main class="diag-pdf-root">
-        <header class="diag-pdf-head">
-          <h1>Diagnóstico inicial · The Good Teacher Club</h1>
-          <p>Generado el ${escapeHtml(generatedAt)}</p>
-        </header>
-        <section class="diag-result">
-          ${resultHtml}
-        </section>
-      </main>
-    </body>
-    </html>
-  `);
-  printWindow.document.close();
-
-  const triggerPrint = () => {
-    printWindow.focus();
-    printWindow.print();
+  const cleanup = () => {
+    document.body.classList.remove("diag-print-mode");
+    if (printHead.parentNode) {
+      printHead.parentNode.removeChild(printHead);
+    }
   };
 
-  printWindow.addEventListener("load", () => {
-    window.setTimeout(triggerPrint, 350);
-  }, { once: true });
-
-  printWindow.addEventListener("afterprint", () => {
-    printWindow.close();
-  }, { once: true });
+  window.addEventListener("afterprint", cleanup, { once: true });
+  window.setTimeout(() => {
+    window.print();
+  }, 80);
 }
 
 function getPriorityClass(score) {

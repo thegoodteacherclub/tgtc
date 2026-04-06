@@ -585,6 +585,10 @@ h2 {
   color: var(--purple-deep);
 }
 
+.diag-print-head {
+  display: none;
+}
+
 .diag-spinner {
   width: 24px;
   height: 24px;
@@ -597,6 +601,84 @@ h2 {
 @keyframes spin {
   to {
     transform: rotate(360deg);
+  }
+}
+
+@media print {
+  @page {
+    size: A4;
+    margin: 10mm;
+  }
+
+  body {
+    background: #fff;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .diag-head,
+  .diag-loader,
+  .diag-actions,
+  [data-screen="acceso"],
+  [data-screen="intro"],
+  [data-screen="wizard"] {
+    display: none !important;
+  }
+
+  [data-screen="resultado"] {
+    display: block !important;
+  }
+
+  .diag-main {
+    width: 100%;
+    max-width: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  .diag-shell {
+    gap: 0;
+  }
+
+  .diag-card {
+    box-shadow: none;
+    border: 0;
+    background: #fff;
+    border-radius: 0;
+    padding: 0;
+  }
+
+  .diag-eyebrow,
+  .diag-card > h2 {
+    display: none;
+  }
+
+  .diag-print-mode .diag-print-head {
+    display: block;
+    margin: 0 0 16px;
+    padding: 12px 14px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: linear-gradient(180deg, #ffffff 0%, #f8f3ff 100%);
+  }
+
+  .diag-print-head h1 {
+    margin: 0 0 4px;
+    font-size: 1.35rem;
+  }
+
+  .diag-print-head p {
+    margin: 0;
+    color: var(--muted);
+  }
+
+  .diag-result-card,
+  .diag-evidence-card,
+  .diag-adjust-card,
+  .diag-matrix-item,
+  .diag-kpi {
+    break-inside: avoid;
+    page-break-inside: avoid;
   }
 }
 

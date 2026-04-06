@@ -351,6 +351,26 @@ h2 {
   gap: 14px;
 }
 
+.diag-section-group {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.diag-section-head {
+  background: linear-gradient(180deg, #ffffff 0%, #f8f3ff 100%);
+}
+
+.diag-section-head h3 {
+  margin-bottom: 4px;
+}
+
+.diag-doc-group {
+  margin-top: 18px;
+  padding-top: 8px;
+  border-top: 2px dashed #6e2ea638;
+}
+
 .diag-result-card {
   border: 1px solid var(--line);
   border-radius: var(--radius-md);

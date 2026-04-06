@@ -671,7 +671,7 @@ function renderResult(result) {
         <div class="diag-result">${dimensionesHtml}</div>
       </article>
       <article class="diag-result-card">
-        <h3>5. Tus 3 prioridades de mejora</h3>
+        <h3>5. Tus tres prioridades de mejora</h3>
         <ul>${shortList(result.prioridades, 3).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
       </article>
     </section>

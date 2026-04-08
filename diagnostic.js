@@ -7,18 +7,19 @@
 
   // Orden estable de dimensiones para desempates en fortalezas y áreas de mejora.
   const DIMENSIONS = [
-    { key: "clarity", label: "objetivo y claridad", questions: [1, 5] },
-    { key: "sequence", label: "secuencia", questions: [2, 9] },
-    { key: "scaffolding", label: "apoyos", questions: [3, 6] },
+    { key: "learning_goals", label: "objetivos de aprendizaje", questions: [1, 5] },
+    { key: "sequence", label: "secuencia", questions: [2] },
+    { key: "support_gradation", label: "apoyos y gradación", questions: [3, 6] },
     { key: "cognitive", label: "procesos de pensamiento", questions: [7, 10] },
-    { key: "material", label: "diseño del material", questions: [4, 8] }
+    { key: "material", label: "diseño del material", questions: [4, 8] },
+    { key: "closure_evaluation", label: "cierre y evaluación", questions: [9] }
   ];
 
   // Banco de preguntas y puntuaciones internas del diagnóstico.
   const QUESTIONS = [
     {
       id: 1,
-      dimension: "clarity",
+      dimension: "learning_goals",
       text: "Cuando planteas una actividad, ¿el alumnado entiende con claridad qué tiene que aprender?",
       options: [
         { id: "A", text: "Entiende lo que tiene que hacer, aunque no siempre el para qué", score: 3 },
@@ -40,7 +41,7 @@
     },
     {
       id: 3,
-      dimension: "scaffolding",
+      dimension: "support_gradation",
       text: "¿Antes de pedir al alumnado que trabaje de forma autónoma, qué suele pasar?",
       options: [
         { id: "A", text: "Hacemos primero una parte guiada o con ejemplo", score: 4 },
@@ -62,7 +63,7 @@
     },
     {
       id: 5,
-      dimension: "clarity",
+      dimension: "learning_goals",
       text: "Tus instrucciones suelen ser…",
       options: [
         { id: "A", text: "Claras en general, aunque a veces algo largas", score: 3 },
@@ -73,7 +74,7 @@
     },
     {
       id: 6,
-      dimension: "scaffolding",
+      dimension: "support_gradation",
       text: "Cuando el alumnado se pone a trabajar, ¿qué ocurre más a menudo?",
       options: [
         { id: "A", text: "Arranca razonablemente bien, con alguna duda puntual", score: 3 },
@@ -106,7 +107,7 @@
     },
     {
       id: 9,
-      dimension: "sequence",
+      dimension: "closure_evaluation",
       text: "Al terminar una actividad, normalmente…",
       options: [
         { id: "A", text: "Hay alguna revisión o cierre breve", score: 3 },
@@ -306,11 +307,12 @@
       profile: result.profile.title,
       strength: result.strength.label,
       improvement_area: result.improvement.label,
-      dim_clarity: String(result.dimensionScores.clarity),
+      dim_learning_goals: String(result.dimensionScores.learning_goals),
       dim_sequence: String(result.dimensionScores.sequence),
-      dim_scaffolding: String(result.dimensionScores.scaffolding),
+      dim_support_gradation: String(result.dimensionScores.support_gradation),
       dim_cognitive: String(result.dimensionScores.cognitive),
       dim_material: String(result.dimensionScores.material),
+      dim_closure_evaluation: String(result.dimensionScores.closure_evaluation),
       submitted_at: new Date().toISOString(),
       page_source: window.location.pathname || window.location.href
     };

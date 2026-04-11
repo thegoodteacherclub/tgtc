@@ -377,6 +377,8 @@ async function generateActivity() {
     validateOutput(result);
     result = await enforceRequestedConceptCoverage(result, payload);
     validateOutput(result);
+    result = await enforceTeacherInstructionAlignment(result, payload);
+    validateOutput(result);
     result = await enforceInternalConsistency(result, payload);
     validateOutput(result);
     await enrichVisualAssets(result);
@@ -409,6 +411,7 @@ function buildPayload() {
     activityType: state.activityType,
     sessionEstimate: state.sessionEstimate.trim(),
     teacherNotes: state.teacherNotes.trim(),
+    teacherRequirements: extractTeacherRequirements(state.teacherNotes),
     requestedConcepts,
     eventDescription: state.eventDescription.trim(),
     eventUrl: state.eventUrl.trim(),
@@ -485,6 +488,9 @@ Regla crítica de precisión:
 - Si el docente pide conceptos o temas explícitos, TODAS las tareas centrales deben trabajarlos de forma visible y concreta.
 - No aceptes ambigüedad: cada concepto obligatorio debe aparecer en enunciados, pasos, evidencias y producto final.
 - Está prohibido desalinear la propuesta con el encargo docente.
+- Si el docente menciona ejemplos, materiales, pasos o acciones concretas, debes incluirlos explícitamente en el cuaderno del alumnado (no como promesa futura).
+- Está prohibido escribir frases tipo "el docente dará ejemplos" sin incluir esos ejemplos de forma literal en la propuesta.
+- Si se piden varios conceptos a la vez, incluye actividades que los combinen explícitamente en la misma tarea.
 
 Regla crítica de imágenes:
 - Si propones imágenes, deben ser coherentes con la noticia base y el contexto real.
@@ -522,6 +528,9 @@ ${outputTypeInstruction(payload.activityType)}
 
 Conceptos obligatorios solicitados por docente (si existen):
 ${payload.requestedConcepts?.length ? payload.requestedConcepts.join(", ") : "No detectado"}
+
+Requisitos literales detectados en indicaciones docentes (si existen):
+${payload.teacherRequirements?.length ? payload.teacherRequirements.join(" | ") : "No detectado"}
 
 Calidad obligatoria:
 - Evita objetivos vagos y secuencias sin progresión.
@@ -905,6 +914,39 @@ async function enforceRequestedConceptCoverage(result, payload) {
   return repaired;
 }
 
+async function enforceTeacherInstructionAlignment(result, payload) {
+  const notes = String(payload.teacherNotes || "").trim();
+  if (!notes) {
+    return result;
+  }
+
+  const audit = await auditTeacherInstructionAlignment(result, payload);
+  if (audit.isSatisfied && (audit.criticalIssues || []).length === 0) {
+    return result;
+  }
+
+  nodes.loadingText.textContent = "Ajustando requisitos del docente";
+
+  const repaired = await repairTeacherInstructionAlignmentWithModel(
+    result,
+    payload,
+    audit.missingElements || [],
+    audit.criticalIssues || []
+  );
+  const repairedAudit = await auditTeacherInstructionAlignment(repaired, payload);
+  if (!repairedAudit.isSatisfied || (repairedAudit.criticalIssues || []).length > 0) {
+    const missingLabel =
+      (repairedAudit.missingElements || []).length > 0
+        ? repairedAudit.missingElements.join(", ")
+        : "requisitos docentes no materializados";
+    throw new Error(
+      `La propuesta no refleja fielmente las indicaciones del docente (${missingLabel}). Vuelve a generar con más detalle.`
+    );
+  }
+
+  return repaired;
+}
+
 async function repairConceptCoverageWithModel(originalResult, payload, missing, criticalIssues) {
   const messages = [
     {
@@ -930,6 +972,95 @@ async function repairConceptCoverageWithModel(originalResult, payload, missing, 
   const content = data?.choices?.[0]?.message?.content;
   if (!content) {
     throw new Error("Respuesta vacía al corregir cobertura de conceptos.");
+  }
+  return JSON.parse(content);
+}
+
+async function auditTeacherInstructionAlignment(result, payload) {
+  const auditSchema = {
+    type: "object",
+    additionalProperties: false,
+    required: ["isSatisfied", "missingElements", "criticalIssues"],
+    properties: {
+      isSatisfied: { type: "boolean" },
+      missingElements: { type: "array", items: { type: "string" } },
+      criticalIssues: { type: "array", items: { type: "string" } }
+    }
+  };
+
+  const response = await requestStructuredModel({
+    schemaName: "tgtc_teacher_alignment_audit",
+    schema: auditSchema,
+    temperature: 0.1,
+    messages: [
+      {
+        role: "system",
+        content:
+          "Eres auditor estricto de fidelidad al encargo docente. Verifica que todo requisito explícito del docente esté materializado en la propuesta final, especialmente ejemplos concretos, materiales citados y acciones pedidas. Si el texto dice que el docente dará ejemplos, marca fallo si esos ejemplos no aparecen escritos en studentMaterial."
+      },
+      {
+        role: "user",
+        content: `Indicaciones del docente:\n${payload.teacherNotes || "No indicadas"}\n\nRequisitos detectados:\n${
+          (payload.teacherRequirements || []).join(" | ") || "No detectados"
+        }\n\nJSON generado:\n${JSON.stringify(result)}`
+      }
+    ]
+  });
+
+  if (!response.ok) {
+    return {
+      isSatisfied: false,
+      missingElements: payload.teacherRequirements || [],
+      criticalIssues: ["No se pudo auditar la fidelidad al encargo docente."]
+    };
+  }
+
+  const data = await response.json();
+  const content = data?.choices?.[0]?.message?.content;
+  if (!content) {
+    return {
+      isSatisfied: false,
+      missingElements: payload.teacherRequirements || [],
+      criticalIssues: ["La auditoría de fidelidad docente devolvió contenido vacío."]
+    };
+  }
+
+  try {
+    return JSON.parse(content);
+  } catch {
+    return {
+      isSatisfied: false,
+      missingElements: payload.teacherRequirements || [],
+      criticalIssues: ["La auditoría de fidelidad docente devolvió JSON inválido."]
+    };
+  }
+}
+
+async function repairTeacherInstructionAlignmentWithModel(originalResult, payload, missingElements, criticalIssues) {
+  const messages = [
+    {
+      role: "system",
+      content:
+        "Corrige una propuesta didáctica JSON para que refleje literalmente las indicaciones del docente. No dejes referencias vacías ni promesas de material externo. Responde solo JSON válido con el mismo schema."
+    },
+    {
+      role: "user",
+      content: `Elementos docentes no reflejados: ${(missingElements || []).join(", ") || "ninguno"}.\nProblemas críticos: ${
+        (criticalIssues || []).join(" | ") || "ninguno"
+      }.\n\nDebes reescribir tareas, pasos, evidencias, visualAssets y materiales para que lo pedido por el docente esté explícito en el resultado. Si se habla de ejemplos, escribe los ejemplos completos.\n\nContexto:\n${JSON.stringify(
+        payload
+      )}\n\nJSON actual:\n${JSON.stringify(originalResult)}`
+    }
+  ];
+
+  const response = await requestModel(messages);
+  if (!response.ok) {
+    throw new Error("No se pudo corregir la fidelidad al encargo docente.");
+  }
+  const data = await response.json();
+  const content = data?.choices?.[0]?.message?.content;
+  if (!content) {
+    throw new Error("Respuesta vacía al corregir fidelidad al encargo docente.");
   }
   return JSON.parse(content);
 }
@@ -1034,6 +1165,42 @@ function normalizeConcept(value) {
     .replace(/[^a-z0-9\s]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function extractTeacherRequirements(text) {
+  const raw = String(text || "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!raw) {
+    return [];
+  }
+
+  const items = [];
+  const quotedMatches = raw.match(/["“”'«»]([^"“”'«»]{3,120})["“”'«»]/g) || [];
+  quotedMatches.forEach((match) => {
+    items.push(match.replace(/["“”'«»]/g, "").trim());
+  });
+
+  const actionMatches = Array.from(
+    raw.matchAll(
+      /\b(?:quiero(?: que)?|necesito(?: que)?|debe(?:n)?|tiene(?:n)? que|incluye|incluyan|usar|usa|trabajar|reforzar|practicar)\b[^.:\n]{0,120}/gi
+    )
+  );
+  actionMatches.forEach((match) => {
+    items.push(String(match[0] || "").trim());
+  });
+
+  if (/\bejemplos?\b/i.test(raw)) {
+    items.push("Incluir ejemplos concretos y visibles en las actividades");
+  }
+
+  return Array.from(
+    new Set(
+      items
+        .map((item) => item.replace(/\s+/g, " ").trim())
+        .filter((item) => item.length >= 8 && item.length <= 140)
+    )
+  );
 }
 
 function detectConsistencyIssues(result) {

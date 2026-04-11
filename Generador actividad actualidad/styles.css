@@ -1,4 +1,4 @@
-﻿:root {
+:root {
   --bg: #f5f1f8;
   --bg-soft: #fcf9fe;
   --surface: #ffffff;
@@ -474,6 +474,59 @@ textarea {
   background: #fff;
   padding: 0.82rem;
   margin-top: 0.65rem;
+}
+
+.visual-assets-grid {
+  margin-top: 0.7rem;
+  display: grid;
+  gap: 0.8rem;
+}
+
+.visual-card {
+  border: 1px solid #d9c9e7;
+  border-radius: 14px;
+  background: #fff;
+  padding: 0.8rem;
+}
+
+.visual-card h5 {
+  margin: 0 0 0.35rem;
+  color: #43205f;
+  font-size: 1rem;
+}
+
+.generated-image {
+  width: 100%;
+  max-width: 560px;
+  border-radius: 12px;
+  border: 1px solid #ccb7de8f;
+  display: block;
+}
+
+.table-wrap {
+  overflow-x: auto;
+}
+
+.asset-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 0.5rem;
+  background: #fff;
+}
+
+.asset-table th,
+.asset-table td {
+  border: 1px solid #d6c5e4;
+  padding: 0.5rem 0.55rem;
+  text-align: left;
+  vertical-align: top;
+  font-size: 0.92rem;
+}
+
+.asset-table th {
+  background: #f6effb;
+  color: #452060;
+  font-weight: 800;
 }
 
 .block h4 {

@@ -1,6 +1,6 @@
 const STORAGE_KEY = "tgtc-static-form-v1";
-const API_PROXY_URL = "const API_PROXY_URL = "https://actividades.thegoodteacherclub.workers.dev";
-";
+const API_PROXY_URL = "https://actividades.thegoodteacherclub.workers.dev";
+
 const STAGE_OPTIONS = ["Primaria / básica", "Secundaria / media", "Otra etapa"];
 const SUBJECT_OPTIONS = [
   "Lengua y literatura",
@@ -368,6 +368,7 @@ async function generateActivity() {
   try {
     const result = await callOpenAI(buildPayload());
     validateOutput(result);
+    await enrichVisualAssets(result);
     lastResult = result;
     renderResult(result);
   } catch (error) {
@@ -452,6 +453,8 @@ Regla clave de formato didáctico:
 - El docente debe poder copiar/pegar tareas y aplicarlas directamente.
 - El material de alumnado debe estar separado del material de docente.
 - En "studentMaterial" escribe cuaderno del alumnado ya redactado (consignas literales, tareas cerradas, pasos y formato de respuesta).
+- En "studentMaterial.visualAssets" incluye todos los apoyos visuales que mencionas en las tareas (imágenes y tablas).
+- Nunca pidas "observa esta imagen/gráfico" si no incluyes ese recurso en "studentMaterial.visualAssets".
 - En "teacherGuide" incluye solo consulta docente (apoyos, decisiones metodológicas, criterios y justificación).
 - En "outputSpecificAssets" no des sugerencias generales: escribe piezas completas de actividad (enunciados, consignas, preguntas, materiales y productos esperados).
 - En "scaffolds" explica apoyos YA integrados en la propuesta (qué apoyo, dónde aparece y cómo gradúa).
@@ -494,6 +497,7 @@ Calidad obligatoria:
 - Asegura coherencia entre objetivo, tareas y evidencia final.
 - Cuida claridad visual y textual de los materiales.
 - Entrega un cuaderno del alumnado final y usable sin rediseño.
+- Si una tarea menciona imágenes, gráficos o tablas, debes proporcionar el recurso visual completo en visualAssets.
 - Entrega tareas completas redactadas para copiar/pegar, no solo ideas o orientaciones.`;
 
   return { system, user };
@@ -582,11 +586,40 @@ const JSON_SCHEMA = {
     studentMaterial: {
       type: "object",
       additionalProperties: false,
-      required: ["studentTitle", "studentIntro", "workbookPages", "finalSubmissionInstruction"],
+      required: ["studentTitle", "studentIntro", "workbookPages", "finalSubmissionInstruction", "visualAssets"],
       properties: {
         studentTitle: { type: "string" },
         studentIntro: { type: "string" },
         finalSubmissionInstruction: { type: "string" },
+        visualAssets: {
+          type: "array",
+          items: {
+            type: "object",
+            additionalProperties: false,
+            required: [
+              "assetType",
+              "title",
+              "instruction",
+              "imagePrompt",
+              "tableColumns",
+              "tableRows"
+            ],
+            properties: {
+              assetType: { type: "string", enum: ["image", "table"] },
+              title: { type: "string" },
+              instruction: { type: "string" },
+              imagePrompt: { type: "string" },
+              tableColumns: { type: "array", items: { type: "string" } },
+              tableRows: {
+                type: "array",
+                items: {
+                  type: "array",
+                  items: { type: "string" }
+                }
+              }
+            }
+          }
+        },
         workbookPages: {
           type: "array",
           minItems: 4,
@@ -682,6 +715,64 @@ async function callOpenAI(payload) {
   }
 }
 
+async function enrichVisualAssets(result) {
+  const assets = result?.studentMaterial?.visualAssets;
+  if (!Array.isArray(assets) || assets.length === 0) {
+    return;
+  }
+
+  const imageAssets = assets.filter(
+    (asset) => asset.assetType === "image" && typeof asset.imagePrompt === "string" && asset.imagePrompt.trim().length > 0
+  );
+
+  if (imageAssets.length === 0) {
+    return;
+  }
+
+  nodes.loadingText.textContent = "Generando recursos visuales";
+
+  await Promise.all(
+    imageAssets.map(async (asset) => {
+      try {
+        const dataUrl = await requestGeneratedImage(asset.imagePrompt);
+        asset.generatedImageUrl = dataUrl;
+      } catch {
+        asset.generatedImageUrl = "";
+      }
+    })
+  );
+}
+
+async function requestGeneratedImage(prompt) {
+  const response = await fetch(API_PROXY_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      endpoint: "images",
+      payload: {
+        model: "gpt-image-1",
+        prompt,
+        size: "1024x1024",
+        quality: "medium"
+      }
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error("No se pudo generar una imagen.");
+  }
+
+  const data = await response.json();
+  const b64 = data?.data?.[0]?.b64_json;
+  if (!b64) {
+    throw new Error("La imagen no llegó en formato esperado.");
+  }
+
+  return `data:image/png;base64,${b64}`;
+}
+
 function validateOutput(result) {
   const required = [
     "title",
@@ -706,6 +797,10 @@ function validateOutput(result) {
 
   if (!Array.isArray(result.sequence) || result.sequence.length === 0) {
     throw new Error("No se ha generado una secuencia válida.");
+  }
+
+  if (!Array.isArray(result.studentMaterial?.visualAssets)) {
+    throw new Error("La propuesta llegó sin recursos visuales estructurados.");
   }
 }
 
@@ -743,11 +838,13 @@ function renderTabContent(result) {
 
   if (activeTab === "student") {
     const pages = result.studentMaterial?.workbookPages || [];
+    const visualAssets = result.studentMaterial?.visualAssets || [];
     nodes.tabContent.innerHTML = `
       <div class="block block-highlight">
         <h3>${escapeHtml(result.studentMaterial?.studentTitle || "Cuaderno del alumnado")}</h3>
         <p>${escapeHtml(result.studentMaterial?.studentIntro || "")}</p>
       </div>
+      ${renderVisualAssetsHtml(visualAssets)}
       ${pages
         .map(
           (page, pageIndex) => `
@@ -877,6 +974,59 @@ function renderTabContent(result) {
   `;
 }
 
+function renderVisualAssetsHtml(assets) {
+  if (!Array.isArray(assets) || assets.length === 0) {
+    return "";
+  }
+
+  return `
+    <section class="block block-highlight">
+      <h4>Recursos visuales incluidos</h4>
+      <div class="visual-assets-grid">
+        ${assets
+          .map((asset) => {
+            if (asset.assetType === "table") {
+              const headers = (asset.tableColumns || []).map((col) => `<th>${escapeHtml(col)}</th>`).join("");
+              const rows = (asset.tableRows || [])
+                .map(
+                  (row) =>
+                    `<tr>${(row || [])
+                      .map((cell) => `<td>${escapeHtml(cell)}</td>`)
+                      .join("")}</tr>`
+                )
+                .join("");
+              return `
+                <article class="visual-card">
+                  <h5>${escapeHtml(asset.title || "Tabla de apoyo")}</h5>
+                  <p>${escapeHtml(asset.instruction || "")}</p>
+                  <div class="table-wrap">
+                    <table class="asset-table">
+                      <thead><tr>${headers}</tr></thead>
+                      <tbody>${rows}</tbody>
+                    </table>
+                  </div>
+                </article>
+              `;
+            }
+
+            return `
+              <article class="visual-card">
+                <h5>${escapeHtml(asset.title || "Imagen de apoyo")}</h5>
+                <p>${escapeHtml(asset.instruction || "")}</p>
+                ${
+                  asset.generatedImageUrl
+                    ? `<img class="generated-image" src="${asset.generatedImageUrl}" alt="${escapeHtml(asset.title || "Recurso visual")}" />`
+                    : `<p class="muted">No se pudo generar la imagen automáticamente en este intento.</p>`
+                }
+              </article>
+            `;
+          })
+          .join("")}
+      </div>
+    </section>
+  `;
+}
+
 function setLoading(isLoading) {
   nodes.generateBtn.disabled = isLoading;
   toggleHidden(nodes.loadingText, !isLoading);
@@ -922,6 +1072,26 @@ async function exportResultAsDocx() {
       new Paragraph({ text: lastResult.studentMaterial?.studentTitle || "", heading: HeadingLevel.HEADING_2 }),
       new Paragraph({ text: lastResult.studentMaterial?.studentIntro || "", spacing: { after: 200 } })
     );
+
+    const visualAssets = lastResult.studentMaterial?.visualAssets || [];
+    if (visualAssets.length > 0) {
+      docChildren.push(new Paragraph({ text: "Recursos visuales incluidos", heading: HeadingLevel.HEADING_2 }));
+      visualAssets.forEach((asset) => {
+        docChildren.push(
+          new Paragraph({ text: asset.title || "", heading: HeadingLevel.HEADING_3 }),
+          new Paragraph({ text: asset.instruction || "" })
+        );
+        if (asset.assetType === "table") {
+          const headers = (asset.tableColumns || []).join(" | ");
+          docChildren.push(new Paragraph({ text: `Columnas: ${headers}` }));
+          (asset.tableRows || []).forEach((row) => {
+            docChildren.push(new Paragraph({ text: `- ${(row || []).join(" | ")}` }));
+          });
+        } else {
+          docChildren.push(new Paragraph({ text: `Descripción visual: ${asset.imagePrompt || ""}` }));
+        }
+      });
+    }
 
     (lastResult.studentMaterial?.workbookPages || []).forEach((page, pageIndex) => {
       docChildren.push(

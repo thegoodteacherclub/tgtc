@@ -479,6 +479,7 @@ Regla clave de formato didáctico:
 - En "studentMaterial" escribe cuaderno del alumnado ya redactado (consignas literales, tareas cerradas, pasos y formato de respuesta).
 - En "studentMaterial.visualAssets" incluye todos los apoyos visuales que mencionas en las tareas (imágenes y tablas).
 - Nunca pidas "observa esta imagen/gráfico" si no incluyes ese recurso en "studentMaterial.visualAssets".
+- Si una actividad incluye "supportMaterial", ese material debe existir realmente dentro de la propuesta (visualAssets o recurso textual explícito).
 - En "teacherGuide" incluye solo consulta docente (apoyos, decisiones metodológicas, criterios y justificación).
 - En "outputSpecificAssets" no des sugerencias generales: escribe piezas completas de actividad (enunciados, consignas, preguntas, materiales y productos esperados).
 - En "scaffolds" explica apoyos YA integrados en la propuesta (qué apoyo, dónde aparece y cómo gradúa).
@@ -541,6 +542,7 @@ Calidad obligatoria:
 - Cuida claridad visual y textual de los materiales.
 - Entrega un cuaderno del alumnado final y usable sin rediseño.
 - Si una tarea menciona imágenes, gráficos o tablas, debes proporcionar el recurso visual completo en visualAssets.
+- Si una tarea declara "Material de apoyo incluido", ese material debe aparecer realmente en la salida final.
 - Entrega tareas completas redactadas para copiar/pegar, no solo ideas o orientaciones.`;
 
   return { system, user };
@@ -1207,6 +1209,7 @@ function detectConsistencyIssues(result) {
   const issues = [];
   const workbookPages = result.studentMaterial?.workbookPages || [];
   const visualAssets = result.studentMaterial?.visualAssets || [];
+  const supportIndex = buildSupportAssetIndex(result);
   const sourceGeo = extractGeoEntities(
     [state.eventDescription, state.articlePreview?.title, state.articlePreview?.summary, state.articlePreview?.content].filter(Boolean).join(" ")
   );
@@ -1248,6 +1251,21 @@ function detectConsistencyIssues(result) {
     }
   }
 
+  workbookPages.forEach((page, pageIndex) => {
+    (page.activities || []).forEach((activity, activityIndex) => {
+      const support = String(activity.supportMaterial || "").trim();
+      if (!support || isNoSupportMaterial(support) || isInherentClassroomMaterial(support)) {
+        return;
+      }
+
+      if (!isSupportMaterialBacked(support, supportIndex)) {
+        issues.push(
+          `Actividad ${activityIndex + 1} de la página ${pageIndex + 1}: el material de apoyo "${support}" no está realmente incluido en la propuesta.`
+        );
+      }
+    });
+  });
+
   const genericImageRef = /\b(observa|consulta|analiza)\s+(la|el|las|los)\s+(imagen|grafico|gráfico)\b/i.test(texts);
   const genericTableRef = /\b(observa|consulta|analiza)\s+(la|el|las|los)\s+tabla\b/i.test(texts);
   if (genericImageRef && imageCount === 0) {
@@ -1285,7 +1303,7 @@ async function repairConsistencyWithModel(originalResult, payload, issues) {
       role: "user",
       content: `Corrige estas incoherencias detectadas:\n- ${issues.join("\n- ")}\n\nContexto original:\n${JSON.stringify(
         payload
-      )}\n\nJSON actual a corregir:\n${JSON.stringify(originalResult)}\n\nRegla: si se menciona un ejercicio/problema/tabla/imagen, ese recurso debe existir realmente en la salida.`
+      )}\n\nJSON actual a corregir:\n${JSON.stringify(originalResult)}\n\nRegla: si se menciona un ejercicio/problema/tabla/imagen, ese recurso debe existir realmente en la salida. Si una actividad declara "material de apoyo incluido", ese material también debe existir realmente dentro del JSON final.`
     }
   ];
 
@@ -1944,6 +1962,86 @@ function extractGeoEntities(text) {
   ];
 
   return geoLexicon.filter((term) => value.includes(term));
+}
+
+function buildSupportAssetIndex(result) {
+  const visualAssets = result?.studentMaterial?.visualAssets || [];
+  const labels = new Set();
+  const corpusParts = [];
+
+  visualAssets.forEach((asset, idx) => {
+    const title = String(asset.title || "").trim();
+    const instruction = String(asset.instruction || "").trim();
+    const alias = asset.assetType === "table" ? `tabla ${idx + 1}` : `imagen ${idx + 1}`;
+    if (title) labels.add(normalizeSupportLabel(title));
+    labels.add(normalizeSupportLabel(alias));
+    if (instruction) corpusParts.push(instruction);
+    if (asset.assetType === "table") {
+      corpusParts.push(...(asset.tableColumns || []));
+      (asset.tableRows || []).forEach((row) => corpusParts.push(...(row || [])));
+    } else {
+      corpusParts.push(String(asset.imagePrompt || ""));
+    }
+  });
+
+  corpusParts.push(...(result.outputSpecificAssets || []));
+  const corpus = normalizeSupportLabel(corpusParts.filter(Boolean).join(" "));
+  const corpusTokens = new Set(tokenizeForCoherence(corpus));
+  return { labels, corpus, corpusTokens };
+}
+
+function normalizeSupportLabel(value) {
+  return String(value || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isSupportMaterialBacked(support, index) {
+  const normalized = normalizeSupportLabel(support);
+  if (!normalized) return true;
+  if (index.labels.has(normalized)) return true;
+  if (index.corpus.includes(normalized)) return true;
+
+  const supportTokens = tokenizeForCoherence(normalized);
+  if (supportTokens.length === 0) return true;
+  const overlap = supportTokens.filter((token) => index.corpusTokens.has(token)).length;
+  return overlap >= Math.min(2, supportTokens.length);
+}
+
+function isNoSupportMaterial(value) {
+  const normalized = normalizeSupportLabel(value);
+  return (
+    normalized === "no aplica" ||
+    normalized === "ninguno" ||
+    normalized === "sin material" ||
+    normalized === "no requiere"
+  );
+}
+
+function isInherentClassroomMaterial(value) {
+  const normalized = normalizeSupportLabel(value);
+  const known = [
+    "cuaderno",
+    "lapiz",
+    "lápiz",
+    "boligrafo",
+    "bolígrafo",
+    "goma",
+    "regla",
+    "hoja",
+    "folios",
+    "rotulador",
+    "pizarra",
+    "calculadora",
+    "colores",
+    "tijeras",
+    "pegamento"
+  ].map((item) => normalizeSupportLabel(item));
+  return known.some((item) => normalized === item || normalized.includes(`${item} `) || normalized.includes(` ${item}`));
 }
 
 function hideNotice() {

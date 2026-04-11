@@ -29,14 +29,29 @@ export default {
     }
 
     try {
-      const body = await request.text();
-      const upstream = await fetch("https://api.openai.com/v1/chat/completions", {
+      const rawBody = await request.text();
+      const parsed = tryParseJson(rawBody);
+
+      let endpoint = "chat/completions";
+      let payload = parsed ?? {};
+
+      if (
+        parsed &&
+        typeof parsed === "object" &&
+        Object.prototype.hasOwnProperty.call(parsed, "endpoint") &&
+        Object.prototype.hasOwnProperty.call(parsed, "payload")
+      ) {
+        endpoint = parsed.endpoint === "images" ? "images/generations" : "chat/completions";
+        payload = parsed.payload;
+      }
+
+      const upstream = await fetch(`https://api.openai.com/v1/${endpoint}`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${env.OPENAI_API_KEY}`
         },
-        body
+        body: JSON.stringify(payload)
       });
 
       const text = await upstream.text();
@@ -73,6 +88,14 @@ function buildCorsHeaders(origin, frontendOrigin) {
   };
 }
 
+function tryParseJson(value) {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
 function originAllowed(origin, frontendOrigin) {
   if (!origin || !frontendOrigin) return false;
 
@@ -94,4 +117,3 @@ function json(payload, init = {}) {
     }
   });
 }
-

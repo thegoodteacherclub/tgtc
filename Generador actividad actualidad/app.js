@@ -375,6 +375,8 @@ async function generateActivity() {
     const payload = buildPayload();
     let result = await callOpenAI(payload);
     validateOutput(result);
+    result = await enforceRequestedConceptCoverage(result, payload);
+    validateOutput(result);
     result = await enforceInternalConsistency(result, payload);
     validateOutput(result);
     await enrichVisualAssets(result);
@@ -395,6 +397,10 @@ async function generateActivity() {
 }
 
 function buildPayload() {
+  const requestedConcepts = extractRequestedConcepts(
+    [state.teacherNotes, state.eventDescription].filter(Boolean).join(" ")
+  );
+
   return {
     stage: state.stage === "Otra etapa" ? state.stageOther.trim() : state.stage,
     age: Number(state.age),
@@ -403,6 +409,7 @@ function buildPayload() {
     activityType: state.activityType,
     sessionEstimate: state.sessionEstimate.trim(),
     teacherNotes: state.teacherNotes.trim(),
+    requestedConcepts,
     eventDescription: state.eventDescription.trim(),
     eventUrl: state.eventUrl.trim(),
     articlePreview: state.articlePreview
@@ -474,6 +481,16 @@ Regla clave de formato didáctico:
 - En "scaffolds" explica apoyos YA integrados en la propuesta (qué apoyo, dónde aparece y cómo gradúa).
 - En "dimensionsSummary" justifica por qué lo que entregaste cumple cada dimensión, con evidencia concreta de tu propia propuesta.
 
+Regla crítica de precisión:
+- Si el docente pide conceptos o temas explícitos, TODAS las tareas centrales deben trabajarlos de forma visible y concreta.
+- No aceptes ambigüedad: cada concepto obligatorio debe aparecer en enunciados, pasos, evidencias y producto final.
+- Está prohibido desalinear la propuesta con el encargo docente.
+
+Regla crítica de imágenes:
+- Si propones imágenes, deben ser coherentes con la noticia base y el contexto real.
+- No inventes países, fronteras, actores geopolíticos o hechos no presentes en la base informativa.
+- Si no hay suficiente certeza factual, usa visuales neutrales y no afirmaciones geopolíticas específicas.
+
 Responde solo JSON válido.`;
 
   const user = `Contexto:
@@ -502,6 +519,9 @@ ${
 
 Instrucción específica por tipo:
 ${outputTypeInstruction(payload.activityType)}
+
+Conceptos obligatorios solicitados por docente (si existen):
+${payload.requestedConcepts?.length ? payload.requestedConcepts.join(", ") : "No detectado"}
 
 Calidad obligatoria:
 - Evita objetivos vagos y secuencias sin progresión.
@@ -712,6 +732,15 @@ async function callOpenAI(payload) {
 }
 
 async function requestModel(messages) {
+  return requestStructuredModel({
+    messages,
+    schemaName: "tgtc_activity",
+    schema: JSON_SCHEMA,
+    temperature: 0.6
+  });
+}
+
+async function requestStructuredModel({ messages, schemaName, schema, temperature = 0.2 }) {
   return fetch(API_PROXY_URL, {
     method: "POST",
     headers: {
@@ -719,14 +748,14 @@ async function requestModel(messages) {
     },
     body: JSON.stringify({
       model: "gpt-4.1-mini",
-      temperature: 0.6,
+      temperature,
       messages,
       response_format: {
         type: "json_schema",
         json_schema: {
-          name: "tgtc_activity",
+          name: schemaName,
           strict: true,
-          schema: JSON_SCHEMA
+          schema
         }
       }
     })
@@ -845,10 +874,175 @@ async function enforceInternalConsistency(result, payload) {
   }
 }
 
+async function enforceRequestedConceptCoverage(result, payload) {
+  const concepts = payload.requestedConcepts || [];
+  if (!Array.isArray(concepts) || concepts.length === 0) {
+    return result;
+  }
+
+  const lexicalMissing = getMissingConceptsLexical(result, concepts);
+  const audit = await auditConceptAlignment(result, concepts);
+  const missing = Array.from(new Set([...(audit.missingConcepts || []), ...lexicalMissing]));
+
+  if (missing.length === 0 && (audit.criticalIssues || []).length === 0) {
+    return result;
+  }
+
+  nodes.loadingText.textContent = "Ajustando foco didáctico solicitado";
+
+  const repaired = await repairConceptCoverageWithModel(result, payload, missing, audit.criticalIssues || []);
+  const repairedAudit = await auditConceptAlignment(repaired, concepts);
+  const stillMissing = getMissingConceptsLexical(repaired, concepts);
+  const stillFailing = Array.from(new Set([...(repairedAudit.missingConcepts || []), ...stillMissing]));
+
+  if (stillFailing.length > 0 || (repairedAudit.criticalIssues || []).length > 0) {
+    const missingLabel = stillFailing.length > 0 ? stillFailing.join(", ") : "coherencia conceptual insuficiente";
+    throw new Error(
+      `La propuesta no cumple con coherencia extrema de conceptos solicitados (${missingLabel}). Vuelve a generar con más detalle.`
+    );
+  }
+
+  return repaired;
+}
+
+async function repairConceptCoverageWithModel(originalResult, payload, missing, criticalIssues) {
+  const messages = [
+    {
+      role: "system",
+      content:
+        "Corrige una propuesta didáctica JSON para que cumpla exactamente los conceptos solicitados por el docente y elimine incoherencias. Responde solo JSON válido con el mismo schema."
+    },
+    {
+      role: "user",
+      content: `Conceptos faltantes detectados: ${missing.join(", ") || "ninguno"}.\nProblemas críticos detectados: ${
+        (criticalIssues || []).join(" | ") || "ninguno"
+      }.\n\nDebes reescribir tareas, secuencia, visualAssets y studentMaterial para que los conceptos obligatorios aparezcan de forma central, explícita y operativa en actividades concretas.\n\nContexto:\n${JSON.stringify(
+        payload
+      )}\n\nJSON actual:\n${JSON.stringify(originalResult)}\n\nRegla: no vale mencionar por encima; debe notarse en enunciados, pasos, evidencias y producto final.`
+    }
+  ];
+
+  const response = await requestModel(messages);
+  if (!response.ok) {
+    throw new Error("No se pudo corregir la cobertura de conceptos solicitados.");
+  }
+  const data = await response.json();
+  const content = data?.choices?.[0]?.message?.content;
+  if (!content) {
+    throw new Error("Respuesta vacía al corregir cobertura de conceptos.");
+  }
+  return JSON.parse(content);
+}
+
+function getMissingConceptsLexical(result, concepts) {
+  const text = [
+    result.title,
+    result.subtitle,
+    result.pedagogicalIntent,
+    result.essentialQuestion,
+    ...(result.learningObjectives || []),
+    ...(result.sequence || []).flatMap((s) => [s.purpose, s.studentAction, s.expectedEvidence]),
+    ...(result.studentMaterial?.workbookPages || []).flatMap((page) => [
+      page.pageTitle,
+      ...(page.studentInstructions || []),
+      ...(page.activities || []).flatMap((a) => [a.taskTitle, a.statement, ...(a.steps || []), a.expectedOutput])
+    ])
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  const missing = [];
+  for (const concept of concepts) {
+    const normalized = normalizeConcept(concept);
+    if (!normalized) continue;
+
+    if (!text.includes(normalized)) {
+      missing.push(concept);
+    }
+  }
+  return Array.from(new Set(missing));
+}
+
+async function auditConceptAlignment(result, concepts) {
+  if (!Array.isArray(concepts) || concepts.length === 0) {
+    return { isAligned: true, missingConcepts: [], criticalIssues: [] };
+  }
+
+  const auditSchema = {
+    type: "object",
+    additionalProperties: false,
+    required: ["isAligned", "missingConcepts", "criticalIssues"],
+    properties: {
+      isAligned: { type: "boolean" },
+      missingConcepts: { type: "array", items: { type: "string" } },
+      criticalIssues: { type: "array", items: { type: "string" } }
+    }
+  };
+
+  const response = await requestStructuredModel({
+    schemaName: "tgtc_alignment_audit",
+    schema: auditSchema,
+    temperature: 0.1,
+    messages: [
+      {
+        role: "system",
+        content:
+          "Eres auditor estricto de calidad didáctica. Comprueba si los conceptos obligatorios aparecen de forma central, explícita y operativa en objetivos, tareas, pasos, evidencias y producto final. Si falta coherencia, marca missingConcepts y explica criticalIssues."
+      },
+      {
+        role: "user",
+        content: `Conceptos obligatorios:\n${concepts.map((item) => `- ${item}`).join("\n")}\n\nJSON generado:\n${JSON.stringify(result)}`
+      }
+    ]
+  });
+
+  if (!response.ok) {
+    return {
+      isAligned: false,
+      missingConcepts: [...concepts],
+      criticalIssues: ["No se pudo auditar la coherencia de conceptos con el modelo."]
+    };
+  }
+
+  const data = await response.json();
+  const content = data?.choices?.[0]?.message?.content;
+  if (!content) {
+    return {
+      isAligned: false,
+      missingConcepts: [...concepts],
+      criticalIssues: ["La auditoría de coherencia devolvió contenido vacío."]
+    };
+  }
+
+  try {
+    return JSON.parse(content);
+  } catch {
+    return {
+      isAligned: false,
+      missingConcepts: [...concepts],
+      criticalIssues: ["La auditoría de coherencia devolvió JSON inválido."]
+    };
+  }
+}
+
+function normalizeConcept(value) {
+  return String(value || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function detectConsistencyIssues(result) {
   const issues = [];
   const workbookPages = result.studentMaterial?.workbookPages || [];
   const visualAssets = result.studentMaterial?.visualAssets || [];
+  const sourceGeo = extractGeoEntities(
+    [state.eventDescription, state.articlePreview?.title, state.articlePreview?.summary, state.articlePreview?.content].filter(Boolean).join(" ")
+  );
 
   const activityCount = workbookPages.reduce((sum, page) => sum + (page.activities?.length || 0), 0);
   const tableCount = visualAssets.filter((a) => a.assetType === "table").length;
@@ -895,6 +1089,20 @@ function detectConsistencyIssues(result) {
   if (genericTableRef && tableCount === 0) {
     issues.push("La propuesta pide observar tablas, pero no incluye ninguna tabla en visualAssets.");
   }
+
+  const imageAssets = visualAssets.filter((a) => a.assetType === "image");
+  imageAssets.forEach((asset) => {
+    const imageGeo = extractGeoEntities(asset.imagePrompt || "");
+    if (imageGeo.length === 0 || sourceGeo.length === 0) {
+      return;
+    }
+    const overlap = imageGeo.filter((g) => sourceGeo.includes(g));
+    if (overlap.length === 0) {
+      issues.push(
+        `La imagen "${asset.title || "sin título"}" parece introducir contexto geográfico no presente en la noticia base.`
+      );
+    }
+  });
 
   return Array.from(new Set(issues));
 }
@@ -1459,6 +1667,116 @@ function tokenizeForCoherence(text) {
     .replace(/[^a-z0-9ñ\s]/g, " ")
     .split(/\s+/)
     .filter((token) => token.length > 3 && !stopwords.has(token));
+}
+
+function extractRequestedConcepts(text) {
+  const raw = String(text || "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!raw) {
+    return [];
+  }
+
+  const candidates = [];
+  const quotedMatches = raw.match(/["“”'«»]([^"“”'«»]{3,80})["“”'«»]/g) || [];
+  quotedMatches.forEach((match) => {
+    candidates.push(match.replace(/["“”'«»]/g, "").trim());
+  });
+
+  const triggerMatches = Array.from(
+    raw.matchAll(
+      /\b(?:quiero(?: que)?(?: trabajar| reforzar| practicar)?|necesito|trabajar|reforzar|practicar|abordar|enfocar|centrar|profundizar|priorizar)\b[^.:\n]{0,18}\b(?:en|sobre|con)\s+([^.;:\n]{3,90})/gi
+    )
+  );
+  triggerMatches.forEach((match) => {
+    const chunk = (match[1] || "").trim();
+    splitConceptChunk(chunk).forEach((item) => candidates.push(item));
+  });
+
+  const explicitListMatch = raw.match(/\bconceptos?\s*(?:clave|obligatorios?)?\s*:\s*([^.\n]{3,160})/i);
+  if (explicitListMatch?.[1]) {
+    splitConceptChunk(explicitListMatch[1]).forEach((item) => candidates.push(item));
+  }
+
+  return Array.from(
+    new Set(
+      candidates
+        .map(cleanConceptCandidate)
+        .filter((item) => item.length >= 3 && item.length <= 60)
+        .filter((item) => !isGenericConceptNoise(item))
+    )
+  );
+}
+
+function splitConceptChunk(text) {
+  return String(text || "")
+    .split(/,|;|\by\b|\be\b|\bo\b/i)
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+function cleanConceptCandidate(text) {
+  return String(text || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/^(el|la|los|las|un|una)\s+/i, "")
+    .replace(/\b(?:de la noticia|del articulo|del artículo|de actualidad)\b/gi, "")
+    .replace(/[^a-z0-9\s/-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isGenericConceptNoise(text) {
+  const noise = new Set([
+    "actividad",
+    "actividades",
+    "noticia",
+    "articulo",
+    "actualidad",
+    "alumnado",
+    "aula",
+    "propuesta",
+    "secuencia",
+    "tema"
+  ]);
+  return noise.has(text);
+}
+
+function extractGeoEntities(text) {
+  const value = String(text || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+
+  const geoLexicon = [
+    "iran",
+    "irak",
+    "gaza",
+    "israel",
+    "ucrania",
+    "rusia",
+    "china",
+    "taiwan",
+    "siria",
+    "libano",
+    "estados unidos",
+    "eeuu",
+    "mexico",
+    "espana",
+    "argentina",
+    "colombia",
+    "peru",
+    "chile",
+    "ecuador",
+    "honduras",
+    "uruguay",
+    "europa",
+    "asia",
+    "africa"
+  ];
+
+  return geoLexicon.filter((term) => value.includes(term));
 }
 
 function hideNotice() {

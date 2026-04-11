@@ -1,5 +1,5 @@
-﻿const STORAGE_KEY = "tgtc-static-form-v1";
-const API_PROXY_URL = "PEGA_AQUI_TU_URL_DE_WORKER";
+const STORAGE_KEY = "tgtc-static-form-v1";
+const API_PROXY_URL = "https://actividades.thegoodteacherclub.workers.dev";
 
 const STAGE_OPTIONS = ["Primaria / básica", "Secundaria / media", "Otra etapa"];
 const SUBJECT_OPTIONS = [

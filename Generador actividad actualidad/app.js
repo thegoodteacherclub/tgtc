@@ -1,6 +1,6 @@
 const STORAGE_KEY = "tgtc-static-form-v1";
-const API_PROXY_URL = "https://actividades.thegoodteacherclub.workers.dev";
-
+const API_PROXY_URL = "const API_PROXY_URL = "https://actividades.thegoodteacherclub.workers.dev";
+";
 const STAGE_OPTIONS = ["Primaria / básica", "Secundaria / media", "Otra etapa"];
 const SUBJECT_OPTIONS = [
   "Lengua y literatura",

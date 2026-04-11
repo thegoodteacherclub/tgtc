@@ -77,7 +77,9 @@ const nodes = {
   sessionEstimate: document.getElementById("sessionEstimate"),
   teacherNotes: document.getElementById("teacherNotes"),
   generalError: document.getElementById("generalError"),
+  coherenceWarning: document.getElementById("coherenceWarning"),
   generateBtn: document.getElementById("generateBtn"),
+  resetBtn: document.getElementById("resetBtn"),
   loadingText: document.getElementById("loadingText"),
   resultSection: document.getElementById("resultSection"),
   resultTitle: document.getElementById("resultTitle"),
@@ -136,6 +138,7 @@ function setupListeners() {
       state[key] = el.value;
       clearError(key);
       hideGeneralError();
+      hideCoherenceWarning();
       if (key === "stage" || key === "country" || key === "subject") {
         updateConditionalFields();
       }
@@ -160,6 +163,7 @@ function setupListeners() {
   nodes.exportDocxBtn.addEventListener("click", exportResultAsDocx);
   nodes.printBtn.addEventListener("click", () => window.print());
   nodes.regenerateBtn.addEventListener("click", generateActivity);
+  nodes.resetBtn.addEventListener("click", resetForm);
 }
 
 function previewListener(field) {
@@ -359,6 +363,7 @@ function renderPreview(article) {
 
 async function generateActivity() {
   hideGeneralError();
+  hideCoherenceWarning();
   if (!validateForm()) {
     return;
   }
@@ -371,6 +376,7 @@ async function generateActivity() {
     await enrichVisualAssets(result);
     lastResult = result;
     renderResult(result);
+    evaluateAndShowCoherenceWarning(result);
   } catch (error) {
     showGeneralError(
       (error && error.message) || "Ha ocurrido un problema al generar la actividad. Revisa la clave API y vuelve a intentarlo."
@@ -1208,6 +1214,23 @@ function copyBlock(text, message) {
     });
 }
 
+function resetForm() {
+  state = JSON.parse(JSON.stringify(INITIAL_STATE));
+  persistState();
+  syncFormToUI();
+  updateConditionalFields();
+  clearAllErrors();
+  hideGeneralError();
+  hideNotice();
+  hideCoherenceWarning();
+  lastResult = null;
+  nodes.tabContent.innerHTML = "";
+  toggleHidden(nodes.articlePreview, true);
+  toggleHidden(nodes.resultSection, true);
+  nodes.copyFeedback.textContent = "";
+  toggleHidden(nodes.copyFeedback, true);
+}
+
 function clearAllErrors() {
   document.querySelectorAll(".error").forEach((node) => {
     node.textContent = "";
@@ -1238,9 +1261,86 @@ function showGeneralError(message) {
   toggleHidden(nodes.generalError, false);
 }
 
+function hideCoherenceWarning() {
+  nodes.coherenceWarning.textContent = "";
+  toggleHidden(nodes.coherenceWarning, true);
+}
+
+function showCoherenceWarning(message) {
+  nodes.coherenceWarning.textContent = message;
+  toggleHidden(nodes.coherenceWarning, false);
+}
+
 function showNotice(message) {
   nodes.extractNotice.textContent = message;
   toggleHidden(nodes.extractNotice, false);
+}
+
+function evaluateAndShowCoherenceWarning(result) {
+  const sourceText = [
+    state.eventDescription,
+    state.articlePreview?.title,
+    state.articlePreview?.summary,
+    state.articlePreview?.content,
+    result.currentEventTitle,
+    result.currentEventSummary
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  const generatedText = [
+    result.title,
+    result.subtitle,
+    result.essentialQuestion,
+    result.whyThisTopicMatters,
+    ...(result.learningObjectives || []),
+    ...(result.sequence || []).map((block) => `${block.purpose} ${block.studentAction}`),
+    ...(result.studentMaterial?.workbookPages || []).flatMap((page) => [
+      page.pageTitle,
+      ...(page.studentInstructions || []),
+      ...(page.activities || []).flatMap((a) => [a.taskTitle, a.statement, ...(a.steps || [])])
+    ])
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  const sourceTokens = tokenizeForCoherence(sourceText);
+  const generatedTokens = tokenizeForCoherence(generatedText);
+
+  if (sourceTokens.length < 6 || generatedTokens.length < 20) {
+    return;
+  }
+
+  const sourceSet = new Set(sourceTokens);
+  const generatedSet = new Set(generatedTokens);
+  let shared = 0;
+  generatedSet.forEach((token) => {
+    if (sourceSet.has(token)) shared += 1;
+  });
+
+  const overlapRatio = shared / Math.max(1, Math.min(sourceSet.size, generatedSet.size));
+
+  if (overlapRatio < 0.08) {
+    showCoherenceWarning(
+      "Aviso de coherencia: la propuesta puede tener baja relación con la noticia o evento base. Revisa la pregunta esencial, las tareas del alumnado y el producto final antes de usarla."
+    );
+  }
+}
+
+function tokenizeForCoherence(text) {
+  const stopwords = new Set([
+    "de","la","el","y","en","que","a","los","las","un","una","por","para","con","del","al","se","su","sus","como",
+    "más","menos","sobre","sin","o","u","es","son","ser","ha","han","lo","le","les","ya","muy","esto","esta","este",
+    "estas","estos","esa","ese","esas","esos","qué","porque","donde","cuando","cómo","cual","cuales","quien","quienes"
+  ]);
+
+  return String(text || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9ñ\s]/g, " ")
+    .split(/\s+/)
+    .filter((token) => token.length > 3 && !stopwords.has(token));
 }
 
 function hideNotice() {

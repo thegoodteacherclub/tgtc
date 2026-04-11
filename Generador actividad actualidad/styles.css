@@ -271,6 +271,17 @@ textarea {
   border-color: #b192d1;
 }
 
+.btn-ghost {
+  color: #4e2d68;
+  background: #ffffff;
+  border-color: #d3c0e2;
+}
+
+.btn-ghost:hover {
+  background: #f9f5fc;
+  border-color: #b99ad2;
+}
+
 .notice {
   margin: 0;
   border-radius: 12px;
@@ -315,6 +326,16 @@ textarea {
   border: 1px solid #ebbdc8;
   background: #fff3f5;
   color: #981c30;
+  padding: 0.86rem;
+  font-weight: 700;
+}
+
+.warning-global {
+  margin: 0;
+  border-radius: 12px;
+  border: 1px solid #f0d48a;
+  background: #fff8e7;
+  color: #6d4a00;
   padding: 0.86rem;
   font-weight: 700;
 }

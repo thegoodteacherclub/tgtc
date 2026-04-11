@@ -1,0 +1,9 @@
+name = "tgtc-activity-proxy"
+main = "src/index.js"
+compatibility_date = "2026-04-11"
+
+[vars]
+# Pon aquí el dominio exacto de tu frontend publicado.
+# Ejemplo: https://tuusuario.github.io
+FRONTEND_ORIGIN = "https://TU_USUARIO.github.io"
+

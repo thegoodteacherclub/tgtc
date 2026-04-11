@@ -1,0 +1,203 @@
+﻿<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TGTC | Generador de actividades de actualidad</title>
+    <meta
+      name="description"
+      content="Genera actividades de actualidad con estructura, criterio y foco real en el aprendizaje."
+    />
+    <meta http-equiv="Content-Language" content="es" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="icon" type="image/png" href="favicon-symbol.png" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="ambient ambient-a"></div>
+    <div class="ambient ambient-b"></div>
+
+    <main class="container">
+      <section class="hero card">
+        <div class="hero-topline">
+          <img class="brand-logo" src="logo.png" alt="The Good Teacher Club" />
+          <p class="hero-note">Diseño didáctico con criterio profesional</p>
+        </div>
+        <h1>Diseña actividades de actualidad.</h1>
+        <p class="lead">Genera actividades de actualidad con estructura, criterio y foco real en el aprendizaje.</p>
+        <p class="quote">No necesitas hacer más. Necesitas diseñar mejor.</p>
+      </section>
+
+      <section class="card section-card">
+        <div class="section-head">
+          <h2>Contexto educativo</h2>
+          <p class="muted">La propuesta se ajusta a etapa, edad, país, materia y tipo de trabajo en aula.</p>
+        </div>
+
+        <div class="grid two">
+          <div class="field">
+            <label for="stage">Etapa educativa *</label>
+            <select id="stage"></select>
+            <p class="error" data-error="stage"></p>
+          </div>
+
+          <div class="field">
+            <label for="age">Edad del alumnado *</label>
+            <input id="age" type="number" min="4" max="99" placeholder="Ej. 13" />
+            <p class="error" data-error="age"></p>
+          </div>
+        </div>
+
+        <div class="field hidden" id="stageOtherWrap">
+          <label for="stageOther">Especifica la etapa *</label>
+          <input id="stageOther" type="text" />
+          <p class="error" data-error="stageOther"></p>
+        </div>
+
+        <div class="grid two">
+          <div class="field">
+            <label for="country">País *</label>
+            <select id="country"></select>
+            <p class="error" data-error="country"></p>
+          </div>
+
+          <div class="field">
+            <label for="subject">Asignatura *</label>
+            <select id="subject"></select>
+            <p class="error" data-error="subject"></p>
+          </div>
+        </div>
+
+        <div class="field hidden" id="countryOtherWrap">
+          <label for="countryOther">Especifica el país *</label>
+          <input id="countryOther" type="text" />
+          <p class="error" data-error="countryOther"></p>
+        </div>
+
+        <div class="field hidden" id="subjectOtherWrap">
+          <label for="subjectOther">Especifica la asignatura *</label>
+          <input id="subjectOther" type="text" />
+          <p class="error" data-error="subjectOther"></p>
+        </div>
+      </section>
+
+      <section class="card section-card">
+        <div class="section-head">
+          <h2>Base informativa</h2>
+          <p class="muted">Describe la noticia o pega un enlace. Cuanta más precisión, mejor saldrá la propuesta.</p>
+        </div>
+
+        <div class="field">
+          <label for="eventDescription">Descripción libre del hecho, noticia o evento</label>
+          <textarea id="eventDescription" rows="5"></textarea>
+          <p class="error" data-error="eventDescription"></p>
+        </div>
+
+        <div class="field">
+          <label for="eventUrl">URL de noticia o artículo</label>
+          <div class="inline">
+            <input id="eventUrl" type="url" placeholder="https://..." />
+            <button id="analyzeUrlBtn" class="btn btn-soft" type="button">Analizar enlace</button>
+          </div>
+          <p class="error" data-error="eventUrl"></p>
+        </div>
+
+        <p id="extractNotice" class="notice hidden"></p>
+
+        <div id="articlePreview" class="preview hidden">
+          <h3>Vista previa editable</h3>
+          <p class="muted">Revisa la base informativa antes de generar.</p>
+
+          <div class="grid two">
+            <div class="field">
+              <label for="previewTitle">Título *</label>
+              <input id="previewTitle" type="text" />
+            </div>
+            <div class="field">
+              <label for="previewSource">Fuente *</label>
+              <input id="previewSource" type="text" />
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="previewDate">Fecha (si existe)</label>
+            <input id="previewDate" type="text" />
+          </div>
+
+          <div class="field">
+            <label for="previewSummary">Resumen *</label>
+            <textarea id="previewSummary" rows="3"></textarea>
+          </div>
+
+          <div class="field">
+            <label for="previewContent">Cuerpo principal *</label>
+            <textarea id="previewContent" rows="6"></textarea>
+          </div>
+        </div>
+      </section>
+
+      <section class="card section-card">
+        <div class="section-head">
+          <h2>Tipo de propuesta didáctica</h2>
+          <p class="muted">Define formato y alcance para que la salida sea usable en clase.</p>
+        </div>
+        <div class="field">
+          <label for="activityType">Tipo de actividad *</label>
+          <select id="activityType"></select>
+        </div>
+
+        <div class="grid two">
+          <div class="field">
+            <label for="sessionEstimate">Duración prevista o número de sesiones</label>
+            <input id="sessionEstimate" type="text" placeholder="Ej. 2 sesiones de 50 minutos" />
+          </div>
+          <div class="field">
+            <label for="teacherNotes">Indicaciones del docente</label>
+            <input id="teacherNotes" type="text" placeholder="Ej. Grupo con ritmos de aprendizaje variados" />
+          </div>
+        </div>
+      </section>
+
+      <p id="generalError" class="error-global hidden"></p>
+
+      <section class="actions no-print">
+        <button id="generateBtn" class="btn btn-main" type="button">Generar actividad</button>
+        <span id="loadingText" class="loading hidden">Analizando la base informativa</span>
+      </section>
+
+      <section id="resultSection" class="card hidden">
+        <header class="result-header">
+          <div>
+            <h2 id="resultTitle"></h2>
+            <p id="resultSubtitle" class="muted"></p>
+            <div id="resultChips" class="chips"></div>
+          </div>
+
+          <div class="result-actions no-print">
+            <button class="btn btn-soft" id="copyAllBtn" type="button">Copiar resultado</button>
+            <button class="btn btn-soft" id="copySequenceBtn" type="button">Copiar secuencia</button>
+            <button class="btn btn-soft" id="copyDimensionsBtn" type="button">Copiar dimensiones</button>
+            <button class="btn btn-soft" id="exportDocxBtn" type="button">Exportar .docx</button>
+            <button class="btn btn-soft" id="printBtn" type="button">Imprimir / PDF</button>
+            <button class="btn btn-main" id="regenerateBtn" type="button">Generar otra versión</button>
+          </div>
+        </header>
+
+        <p id="copyFeedback" class="feedback hidden"></p>
+
+        <nav class="tabs no-print" id="tabs"></nav>
+
+        <div id="tabContent" class="tab-content"></div>
+      </section>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>

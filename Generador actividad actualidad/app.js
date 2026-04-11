@@ -100,6 +100,7 @@ let state = loadState();
 let loadingTimer = null;
 let lastResult = null;
 let activeTab = "student";
+let pendingQualityWarning = "";
 
 bootstrap();
 
@@ -371,11 +372,18 @@ async function generateActivity() {
   setLoading(true);
 
   try {
-    const result = await callOpenAI(buildPayload());
+    const payload = buildPayload();
+    let result = await callOpenAI(payload);
+    validateOutput(result);
+    result = await enforceInternalConsistency(result, payload);
     validateOutput(result);
     await enrichVisualAssets(result);
     lastResult = result;
     renderResult(result);
+    if (pendingQualityWarning) {
+      showCoherenceWarning(pendingQualityWarning);
+      pendingQualityWarning = "";
+    }
     evaluateAndShowCoherenceWarning(result);
   } catch (error) {
     showGeneralError(
@@ -680,28 +688,10 @@ const JSON_SCHEMA = {
 
 async function callOpenAI(payload) {
   const { system, user } = buildPrompts(payload);
-  const response = await fetch(API_PROXY_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      model: "gpt-4.1-mini",
-      temperature: 0.6,
-      messages: [
-        { role: "system", content: system },
-        { role: "user", content: user }
-      ],
-      response_format: {
-        type: "json_schema",
-        json_schema: {
-          name: "tgtc_activity",
-          strict: true,
-          schema: JSON_SCHEMA
-        }
-      }
-    })
-  });
+  const response = await requestModel([
+    { role: "system", content: system },
+    { role: "user", content: user }
+  ]);
 
   if (!response.ok) {
     const errorData = await safeJson(response);
@@ -719,6 +709,28 @@ async function callOpenAI(payload) {
   } catch {
     throw new Error("Respuesta del modelo mal formada. Intenta generar otra versión.");
   }
+}
+
+async function requestModel(messages) {
+  return fetch(API_PROXY_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      model: "gpt-4.1-mini",
+      temperature: 0.6,
+      messages,
+      response_format: {
+        type: "json_schema",
+        json_schema: {
+          name: "tgtc_activity",
+          strict: true,
+          schema: JSON_SCHEMA
+        }
+      }
+    })
+  });
 }
 
 async function enrichVisualAssets(result) {
@@ -808,6 +820,111 @@ function validateOutput(result) {
   if (!Array.isArray(result.studentMaterial?.visualAssets)) {
     throw new Error("La propuesta llegó sin recursos visuales estructurados.");
   }
+}
+
+async function enforceInternalConsistency(result, payload) {
+  const initialIssues = detectConsistencyIssues(result);
+  if (initialIssues.length === 0) {
+    return result;
+  }
+
+  nodes.loadingText.textContent = "Corrigiendo coherencia interna";
+
+  try {
+    const repaired = await repairConsistencyWithModel(result, payload, initialIssues);
+    const remainingIssues = detectConsistencyIssues(repaired);
+    if (remainingIssues.length > 0) {
+      pendingQualityWarning =
+        "Aviso de calidad: se han detectado referencias internas incompletas (ejercicios/problemas/recursos no presentes). Revisa antes de usar en aula.";
+    }
+    return repaired;
+  } catch {
+    pendingQualityWarning =
+      "Aviso de calidad: no se pudo corregir automáticamente la coherencia interna de todos los elementos.";
+    return result;
+  }
+}
+
+function detectConsistencyIssues(result) {
+  const issues = [];
+  const workbookPages = result.studentMaterial?.workbookPages || [];
+  const visualAssets = result.studentMaterial?.visualAssets || [];
+
+  const activityCount = workbookPages.reduce((sum, page) => sum + (page.activities?.length || 0), 0);
+  const tableCount = visualAssets.filter((a) => a.assetType === "table").length;
+  const imageCount = visualAssets.filter((a) => a.assetType === "image").length;
+
+  const texts = [
+    result.studentMaterial?.studentIntro,
+    result.studentMaterial?.finalSubmissionInstruction,
+    ...(workbookPages || []).flatMap((page) => [
+      page.pageTitle,
+      ...(page.studentInstructions || []),
+      ...(page.activities || []).flatMap((a) => [a.taskTitle, a.statement, ...(a.steps || [])])
+    ]),
+    ...(result.sequence || []).flatMap((s) => [s.studentAction, s.purpose])
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  const refs = Array.from(
+    texts.matchAll(/\b(ejercicio|problema|actividad|tabla|imagen|grafico|gráfico)s?\s*(?:n[ºo]\s*)?(\d+)\b/gi)
+  );
+
+  for (const match of refs) {
+    const type = (match[1] || "").toLowerCase();
+    const num = Number(match[2]);
+    if (Number.isNaN(num) || num < 1) continue;
+
+    if ((type === "ejercicio" || type === "problema" || type === "actividad") && num > activityCount) {
+      issues.push(`Se menciona ${match[0]} pero solo hay ${activityCount} actividades definidas.`);
+    }
+    if (type === "tabla" && num > tableCount) {
+      issues.push(`Se menciona ${match[0]} pero solo hay ${tableCount} tablas definidas.`);
+    }
+    if ((type === "imagen" || type === "grafico" || type === "gráfico") && num > imageCount) {
+      issues.push(`Se menciona ${match[0]} pero solo hay ${imageCount} imágenes definidas.`);
+    }
+  }
+
+  const genericImageRef = /\b(observa|consulta|analiza)\s+(la|el|las|los)\s+(imagen|grafico|gráfico)\b/i.test(texts);
+  const genericTableRef = /\b(observa|consulta|analiza)\s+(la|el|las|los)\s+tabla\b/i.test(texts);
+  if (genericImageRef && imageCount === 0) {
+    issues.push("La propuesta pide observar imágenes, pero no incluye ninguna imagen en visualAssets.");
+  }
+  if (genericTableRef && tableCount === 0) {
+    issues.push("La propuesta pide observar tablas, pero no incluye ninguna tabla en visualAssets.");
+  }
+
+  return Array.from(new Set(issues));
+}
+
+async function repairConsistencyWithModel(originalResult, payload, issues) {
+  const messages = [
+    {
+      role: "system",
+      content:
+        "Corrige una propuesta didáctica JSON ya generada. Debes mantener calidad pedagógica y corregir referencias internas rotas. Responde solo JSON válido con el mismo schema."
+    },
+    {
+      role: "user",
+      content: `Corrige estas incoherencias detectadas:\n- ${issues.join("\n- ")}\n\nContexto original:\n${JSON.stringify(
+        payload
+      )}\n\nJSON actual a corregir:\n${JSON.stringify(originalResult)}\n\nRegla: si se menciona un ejercicio/problema/tabla/imagen, ese recurso debe existir realmente en la salida.`
+    }
+  ];
+
+  const response = await requestModel(messages);
+  if (!response.ok) {
+    throw new Error("No se pudo corregir coherencia.");
+  }
+
+  const data = await response.json();
+  const content = data?.choices?.[0]?.message?.content;
+  if (!content) {
+    throw new Error("Respuesta vacía en corrección.");
+  }
+  return JSON.parse(content);
 }
 
 function renderResult(result) {
@@ -1216,6 +1333,7 @@ function copyBlock(text, message) {
 
 function resetForm() {
   state = JSON.parse(JSON.stringify(INITIAL_STATE));
+  pendingQualityWarning = "";
   persistState();
   syncFormToUI();
   updateConditionalFields();

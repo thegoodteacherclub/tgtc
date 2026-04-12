@@ -1891,6 +1891,7 @@ function buildTeacherWorkbookEntries(result) {
 
   return entries.map((entry, idx) => {
     const seq = sequence[idx % Math.max(1, sequence.length)] || {};
+    const mode = classifyStudentMode(seq);
     const supportParts = [
       entry.activity?.supportMaterial || "",
       seq.support || "",
@@ -1901,6 +1902,7 @@ function buildTeacherWorkbookEntries(result) {
 
     return {
       ...entry,
+      modeLabel: mode.label,
       teacherPurpose: seq.purpose || result?.pedagogicalIntent || "Consolidar el objetivo de aprendizaje de la secuencia.",
       teacherAction:
         seq.teacherAction ||
@@ -2005,6 +2007,74 @@ function getSafeBaseFileName() {
   return (lastResult?.title || "actividad-tgtc").replace(/[\\/:*?"<>|]+/g, "").slice(0, 80);
 }
 
+function buildResultMetaChips(result) {
+  return [result.activityType, result.stageLabel, `${result.age} años`, result.country, result.subject].filter(Boolean);
+}
+
+function createDocxParagraphsFactory(docxApi) {
+  const { Paragraph, TextRun, HeadingLevel, AlignmentType } = docxApi;
+
+  const title = (text) =>
+    new Paragraph({
+      spacing: { after: 120 },
+      children: [new TextRun({ text, bold: true, color: "53207F", size: 38 })]
+    });
+
+  const brand = () =>
+    new Paragraph({
+      spacing: { after: 220 },
+      children: [new TextRun({ text: "The Good Teacher Club", bold: true, color: "6E2EA6", size: 24 })]
+    });
+
+  const chips = (items) =>
+    new Paragraph({
+      spacing: { after: 220 },
+      children: [new TextRun({ text: items.join("  |  "), color: "512275", size: 20 })]
+    });
+
+  const section = (text) =>
+    new Paragraph({
+      heading: HeadingLevel.HEADING_2,
+      spacing: { before: 120, after: 110 },
+      children: [new TextRun({ text, bold: true, color: "512275", size: 26 })]
+    });
+
+  const activityTitle = (text) =>
+    new Paragraph({
+      heading: HeadingLevel.HEADING_3,
+      spacing: { before: 80, after: 80 },
+      children: [new TextRun({ text, bold: true, color: "43205F", size: 24 })]
+    });
+
+  const modeChip = (text) =>
+    new Paragraph({
+      spacing: { after: 90 },
+      children: [new TextRun({ text: `[${text}]`, bold: true, color: "6E2EA6", size: 20 })]
+    });
+
+  const body = (text, after = 90) =>
+    new Paragraph({
+      spacing: { after },
+      children: [new TextRun({ text: String(text || ""), size: 22, color: "261336" })]
+    });
+
+  const bullet = (text) =>
+    new Paragraph({
+      spacing: { after: 70 },
+      indent: { left: 320, hanging: 180 },
+      children: [new TextRun({ text: `• ${text}`, size: 21, color: "261336" })]
+    });
+
+  const divider = () =>
+    new Paragraph({
+      alignment: AlignmentType.LEFT,
+      spacing: { before: 80, after: 80 },
+      children: [new TextRun({ text: "────────────────────────────────────────", color: "C8B2DB", size: 18 })]
+    });
+
+  return { title, brand, chips, section, activityTitle, modeChip, body, bullet, divider };
+}
+
 async function exportStudentDocx() {
   if (!requireResultForExport()) return;
   if (!window.docx || !window.saveAs) {
@@ -2013,60 +2083,72 @@ async function exportStudentDocx() {
   }
 
   try {
-    const { Document, Packer, Paragraph, HeadingLevel, TextRun } = window.docx;
+    const { Document, Packer } = window.docx;
+    const P = createDocxParagraphsFactory(window.docx);
     const docChildren = [];
     const activities = buildStudentWorkbookEntries(lastResult);
     const visualAssets = lastResult.studentMaterial?.visualAssets || [];
+    const chips = buildResultMetaChips(lastResult);
 
     docChildren.push(
-      new Paragraph({ text: `${lastResult.title || "Actividad didáctica"} - Cuaderno del alumnado`, heading: HeadingLevel.TITLE }),
-      new Paragraph({ text: lastResult.studentMaterial?.studentIntro || "", spacing: { after: 120 } }),
-      new Paragraph({ text: "Formato de entrega final (léelo antes de empezar)", heading: HeadingLevel.HEADING_2 }),
-      new Paragraph({ text: lastResult.studentMaterial?.finalSubmissionInstruction || "", spacing: { after: 180 } })
+      P.title(`${lastResult.title || "Actividad didáctica"} · Cuaderno del alumnado`),
+      P.brand(),
+      P.chips(chips),
+      P.body(lastResult.studentMaterial?.studentIntro || "", 150),
+      P.section("Formato de Entrega Final"),
+      P.body(lastResult.studentMaterial?.finalSubmissionInstruction || "", 170)
     );
 
     if (visualAssets.length > 0) {
-      docChildren.push(new Paragraph({ text: "Recursos visuales incluidos", heading: HeadingLevel.HEADING_2 }));
+      docChildren.push(P.section("Recursos Visuales Incluidos"));
       visualAssets.forEach((asset) => {
-        docChildren.push(new Paragraph({ text: `${asset.assetType === "table" ? "Tabla" : "Imagen"}: ${asset.title || ""}` }));
-        if (asset.instruction) docChildren.push(new Paragraph({ text: `Uso: ${asset.instruction}` }));
+        docChildren.push(P.activityTitle(`${asset.assetType === "table" ? "Tabla" : "Imagen"} · ${asset.title || "Recurso visual"}`));
+        if (asset.instruction) docChildren.push(P.body(`Uso didáctico: ${asset.instruction}`));
         if (asset.assetType === "image") {
-          docChildren.push(
-            new Paragraph({
-              text: "Aviso: Recreación visual generada con IA. No corresponde a una fotografía real."
-            })
-          );
+          docChildren.push(P.body("Aviso: Recreación visual generada con IA. No corresponde a una fotografía real."));
         }
+        docChildren.push(P.divider());
       });
-      docChildren.push(new Paragraph({ text: "", spacing: { after: 120 } }));
     }
 
+    docChildren.push(P.section("Actividades"));
     activities.forEach((entry) => {
       const statementLines = splitQuestionsForReadability(buildStudentStatementText(entry))
         .split("\n")
         .map((line) => line.trim())
         .filter(Boolean);
       docChildren.push(
-        new Paragraph({ text: `Actividad ${entry.globalIndex}: ${entry.activity.taskTitle || ""}`, heading: HeadingLevel.HEADING_2 }),
-        new Paragraph({ text: `${entry.modeLabel}` }),
-        new Paragraph({ text: `Enunciado: ${statementLines[0] || ""}` }),
-        ...statementLines.slice(1).map((line) => new Paragraph({ text: line }))
+        P.activityTitle(`Actividad ${entry.globalIndex} · ${entry.activity.taskTitle || ""}`),
+        P.modeChip(entry.modeLabel),
+        P.body(`Enunciado: ${statementLines[0] || ""}`),
+        ...statementLines.slice(1).map((line) => P.body(line, 70))
       );
       if (Array.isArray(entry.activity.steps) && entry.activity.steps.length > 0) {
-        docChildren.push(new Paragraph({ text: "Desarrollo de la actividad:" }));
+        docChildren.push(P.body("Desarrollo de la actividad:"));
         entry.activity.steps.forEach((step) => {
-          docChildren.push(new Paragraph({ children: [new TextRun({ text: `- ${step}` })], spacing: { after: 70 } }));
+          docChildren.push(P.bullet(step));
         });
       }
-      docChildren.push(new Paragraph({ text: "", spacing: { after: 140 } }));
+      docChildren.push(P.divider());
     });
 
     docChildren.push(
-      new Paragraph({ text: "Recordatorio de entrega final", heading: HeadingLevel.HEADING_2 }),
-      new Paragraph({ text: lastResult.studentMaterial?.finalSubmissionInstruction || "", spacing: { after: 170 } })
+      P.section("Recordatorio de Entrega Final"),
+      P.body(lastResult.studentMaterial?.finalSubmissionInstruction || "", 170)
     );
 
-    const doc = new Document({ sections: [{ children: docChildren }] });
+    const doc = new Document({
+      sections: [
+        {
+          properties: {
+            page: {
+              margin: { top: 1100, right: 1100, bottom: 1100, left: 1100 }
+            }
+          },
+          children: docChildren
+        }
+      ]
+    });
     const blob = await Packer.toBlob(doc);
     window.saveAs(blob, `${getSafeBaseFileName()}-alumno.docx`);
     showCopyFeedback("Cuaderno del alumnado (.docx) exportado");
@@ -2083,47 +2165,65 @@ async function exportTeacherDocx() {
   }
 
   try {
-    const { Document, Packer, Paragraph, HeadingLevel, TextRun } = window.docx;
+    const { Document, Packer } = window.docx;
+    const P = createDocxParagraphsFactory(window.docx);
     const docChildren = [];
     const entries = buildTeacherWorkbookEntries(lastResult);
+    const chips = buildResultMetaChips(lastResult);
 
     docChildren.push(
-      new Paragraph({ text: `${lastResult.title || "Actividad didáctica"} - Cuaderno docente`, heading: HeadingLevel.TITLE }),
-      new Paragraph({ text: lastResult.teacherGuide?.implementationSummary || "", spacing: { after: 220 } })
+      P.title(`${lastResult.title || "Actividad didáctica"} · Cuaderno docente`),
+      P.brand(),
+      P.chips(chips),
+      P.body(lastResult.teacherGuide?.implementationSummary || "", 220)
     );
 
+    docChildren.push(P.section("Secuencia de Actividades"));
     entries.forEach((entry) => {
       docChildren.push(
-        new Paragraph({ text: `Actividad ${entry.globalIndex}: ${entry.activity.taskTitle || ""}`, heading: HeadingLevel.HEADING_2 }),
-        new Paragraph({ text: `Bloque: ${entry.pageTitle || "General"}` }),
-        new Paragraph({ text: `Consigna para alumnado: ${entry.activity.statement || ""}` }),
-        new Paragraph({ text: `Indicaciones generales del bloque: ${(entry.pageInstructions || []).join(" | ") || "No aplica"}` }),
-        new Paragraph({ text: "Pasos del alumnado:" })
+        P.activityTitle(`Actividad ${entry.globalIndex} · ${entry.activity.taskTitle || ""}`),
+        P.body(`Bloque: ${entry.pageTitle || "General"}`),
+        P.modeChip(entry.modeLabel || "Trabajo en aula"),
+        P.body(`Consigna para alumnado: ${entry.activity.statement || ""}`),
+        P.body(`Indicaciones del bloque: ${(entry.pageInstructions || []).join(" | ") || "No aplica"}`),
+        P.body("Pasos del alumnado:")
       );
       (entry.activity.steps || []).forEach((step) => {
-        docChildren.push(new Paragraph({ children: [new TextRun({ text: `- ${step}` })], spacing: { after: 70 } }));
+        docChildren.push(P.bullet(step));
       });
       docChildren.push(
-        new Paragraph({ text: `Producto esperado del alumnado: ${entry.activity.expectedOutput || ""}` }),
-        new Paragraph({ text: `Intención didáctica: ${entry.teacherPurpose}` }),
-        new Paragraph({ text: `Intervención docente: ${entry.teacherAction}` }),
-        new Paragraph({ text: `Apoyos y materiales: ${entry.teacherSupport}` }),
-        new Paragraph({ text: `Qué observar y evaluar: ${entry.teacherEvidence}`, spacing: { after: 170 } })
+        P.body(`Producto esperado del alumnado: ${entry.activity.expectedOutput || ""}`),
+        P.body(`Intención didáctica: ${entry.teacherPurpose}`),
+        P.body(`Intervención docente: ${entry.teacherAction}`),
+        P.body(`Apoyos y materiales: ${entry.teacherSupport}`),
+        P.body(`Qué observar y evaluar: ${entry.teacherEvidence}`, 120),
+        P.divider()
       );
     });
 
     docChildren.push(
-      new Paragraph({ text: "Diferenciación", heading: HeadingLevel.HEADING_2 }),
+      P.section("Diferenciación"),
       ...((lastResult.teacherGuide?.differentiation || []).map(
-        (item) => new Paragraph({ children: [new TextRun({ text: `- ${item}` })], spacing: { after: 90 } })
+        (item) => P.bullet(item)
       )),
-      new Paragraph({ text: "Criterios de evaluación", heading: HeadingLevel.HEADING_2 }),
+      P.section("Criterios de evaluación"),
       ...((lastResult.teacherGuide?.evaluationCriteria || []).map(
-        (item) => new Paragraph({ children: [new TextRun({ text: `- ${item}` })], spacing: { after: 90 } })
+        (item) => P.bullet(item)
       ))
     );
 
-    const doc = new Document({ sections: [{ children: docChildren }] });
+    const doc = new Document({
+      sections: [
+        {
+          properties: {
+            page: {
+              margin: { top: 1100, right: 1100, bottom: 1100, left: 1100 }
+            }
+          },
+          children: docChildren
+        }
+      ]
+    });
     const blob = await Packer.toBlob(doc);
     window.saveAs(blob, `${getSafeBaseFileName()}-docente.docx`);
     showCopyFeedback("Cuaderno docente (.docx) exportado");
@@ -2234,15 +2334,198 @@ function saveLinesAsPdf(lines, filename) {
   return true;
 }
 
+function createStyledPdfRenderer(doc) {
+  const purple = [83, 32, 127];
+  const softPurple = [247, 239, 252];
+  const text = [38, 19, 54];
+  const muted = [95, 80, 110];
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const marginX = 15;
+  const contentWidth = pageWidth - marginX * 2;
+  let y = 20;
+
+  const ensureSpace = (needed = 10) => {
+    if (y + needed <= pageHeight - 15) return;
+    doc.addPage();
+    y = 20;
+  };
+
+  const header = (title, subtitle, chips = []) => {
+    doc.setFillColor(...purple);
+    doc.roundedRect(marginX, y, contentWidth, 24, 3, 3, "F");
+    doc.setTextColor(255, 255, 255);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(15);
+    doc.text(title, marginX + 4, y + 9);
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "normal");
+    doc.text(subtitle, marginX + 4, y + 16);
+    y += 30;
+    if (chips.length > 0) {
+      doc.setTextColor(...muted);
+      doc.setFontSize(9);
+      doc.text(chips.join("  |  "), marginX, y);
+      y += 7;
+    }
+    doc.setTextColor(...text);
+  };
+
+  const section = (title) => {
+    ensureSpace(14);
+    doc.setFillColor(...softPurple);
+    doc.roundedRect(marginX, y, contentWidth, 8, 2, 2, "F");
+    doc.setTextColor(...purple);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(11);
+    doc.text(title, marginX + 3, y + 5.5);
+    y += 12;
+    doc.setTextColor(...text);
+  };
+
+  const paragraph = (value, opts = {}) => {
+    const size = opts.size || 10;
+    const color = opts.color || text;
+    const leading = opts.leading || 5.2;
+    ensureSpace(8);
+    doc.setTextColor(...color);
+    doc.setFont("helvetica", opts.bold ? "bold" : "normal");
+    doc.setFontSize(size);
+    const lines = doc.splitTextToSize(String(value || ""), contentWidth);
+    lines.forEach((line) => {
+      ensureSpace(leading + 1);
+      doc.text(line, marginX, y);
+      y += leading;
+    });
+    y += opts.after || 1.5;
+    doc.setTextColor(...text);
+  };
+
+  const activityCard = (title, chip, bodyLines = []) => {
+    const previewHeight = 12 + bodyLines.length * 5.2;
+    ensureSpace(Math.min(55, Math.max(22, previewHeight)));
+    doc.setFillColor(253, 251, 255);
+    doc.setDrawColor(217, 201, 231);
+    doc.roundedRect(marginX, y, contentWidth, 14, 2.5, 2.5, "FD");
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(11);
+    doc.setTextColor(...purple);
+    doc.text(title, marginX + 3, y + 6);
+    if (chip) {
+      const chipWidth = Math.min(70, doc.getTextWidth(chip) + 8);
+      const chipX = marginX + contentWidth - chipWidth - 3;
+      doc.setFillColor(247, 239, 252);
+      doc.roundedRect(chipX, y + 2, chipWidth, 6, 3, 3, "F");
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(8.5);
+      doc.setTextColor(81, 34, 117);
+      doc.text(chip, chipX + 3, y + 6.3);
+    }
+    y += 16;
+    bodyLines.forEach((line) => paragraph(line, { size: 10, after: 0.5 }));
+    y += 2;
+  };
+
+  const bullet = (textValue) => paragraph(`• ${textValue}`, { size: 10, after: 0.8 });
+
+  return { header, section, paragraph, activityCard, bullet };
+}
+
+function renderStudentPdfStyled(result, filename) {
+  if (!window.jspdf?.jsPDF) {
+    showGeneralError("No se ha podido cargar la librería de exportación PDF.");
+    return false;
+  }
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: "mm", format: "a4" });
+  const r = createStyledPdfRenderer(doc);
+  const activities = buildStudentWorkbookEntries(result);
+  const visualAssets = result.studentMaterial?.visualAssets || [];
+
+  r.header(`${result.title || "Actividad didáctica"} · Alumnado`, "The Good Teacher Club", buildResultMetaChips(result));
+  r.paragraph(result.studentMaterial?.studentIntro || "");
+  r.section("Formato de entrega final");
+  r.paragraph(result.studentMaterial?.finalSubmissionInstruction || "");
+
+  if (visualAssets.length > 0) {
+    r.section("Recursos visuales");
+    visualAssets.forEach((asset) => {
+      r.activityCard(`${asset.assetType === "table" ? "Tabla" : "Imagen"} · ${asset.title || "Recurso visual"}`, "", [
+        asset.instruction ? `Uso didáctico: ${asset.instruction}` : "",
+        asset.assetType === "image" ? "Aviso: Recreación visual generada con IA. No corresponde a una fotografía real." : ""
+      ].filter(Boolean));
+    });
+  }
+
+  r.section("Actividades");
+  activities.forEach((entry) => {
+    const statementLines = splitQuestionsForReadability(buildStudentStatementText(entry))
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
+    const bodyLines = [`Enunciado: ${statementLines[0] || ""}`, ...statementLines.slice(1)];
+    if (Array.isArray(entry.activity.steps) && entry.activity.steps.length > 0) {
+      bodyLines.push("Desarrollo de la actividad:");
+      entry.activity.steps.forEach((step, idx) => bodyLines.push(`  ${idx + 1}. ${step}`));
+    }
+    r.activityCard(`Actividad ${entry.globalIndex} · ${entry.activity.taskTitle || ""}`, entry.modeLabel, bodyLines);
+  });
+
+  r.section("Recordatorio de entrega final");
+  r.paragraph(result.studentMaterial?.finalSubmissionInstruction || "");
+  doc.save(filename);
+  return true;
+}
+
+function renderTeacherPdfStyled(result, filename) {
+  if (!window.jspdf?.jsPDF) {
+    showGeneralError("No se ha podido cargar la librería de exportación PDF.");
+    return false;
+  }
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: "mm", format: "a4" });
+  const r = createStyledPdfRenderer(doc);
+  const entries = buildTeacherWorkbookEntries(result);
+
+  r.header(`${result.title || "Actividad didáctica"} · Docente`, "The Good Teacher Club", buildResultMetaChips(result));
+  r.section("Resumen de implementación");
+  r.paragraph(result.teacherGuide?.implementationSummary || "");
+
+  r.section("Secuencia de actividades");
+  entries.forEach((entry) => {
+    const bodyLines = [
+      `Bloque: ${entry.pageTitle || "General"}`,
+      `Consigna para alumnado: ${entry.activity.statement || ""}`,
+      `Indicaciones del bloque: ${(entry.pageInstructions || []).join(" | ") || "No aplica"}`,
+      "Pasos del alumnado:",
+      ...((entry.activity.steps || []).map((step, idx) => `  ${idx + 1}. ${step}`)),
+      `Producto esperado del alumnado: ${entry.activity.expectedOutput || ""}`,
+      `Intención didáctica: ${entry.teacherPurpose}`,
+      `Intervención docente: ${entry.teacherAction}`,
+      `Apoyos y materiales: ${entry.teacherSupport}`,
+      `Qué observar y evaluar: ${entry.teacherEvidence}`
+    ];
+    r.activityCard(`Actividad ${entry.globalIndex} · ${entry.activity.taskTitle || ""}`, entry.modeLabel || "", bodyLines);
+  });
+
+  r.section("Diferenciación");
+  (result.teacherGuide?.differentiation || []).forEach((item) => r.bullet(item));
+  r.section("Criterios de evaluación");
+  (result.teacherGuide?.evaluationCriteria || []).forEach((item) => r.bullet(item));
+
+  doc.save(filename);
+  return true;
+}
+
 function exportStudentPdf() {
   if (!requireResultForExport()) return;
-  const ok = saveLinesAsPdf(buildStudentPdfLines(lastResult), `${getSafeBaseFileName()}-alumno.pdf`);
+  const ok = renderStudentPdfStyled(lastResult, `${getSafeBaseFileName()}-alumno.pdf`);
   if (ok) showCopyFeedback("Cuaderno del alumnado (PDF) exportado");
 }
 
 function exportTeacherPdf() {
   if (!requireResultForExport()) return;
-  const ok = saveLinesAsPdf(buildTeacherPdfLines(lastResult), `${getSafeBaseFileName()}-docente.pdf`);
+  const ok = renderTeacherPdfStyled(lastResult, `${getSafeBaseFileName()}-docente.pdf`);
   if (ok) showCopyFeedback("Cuaderno docente (PDF) exportado");
 }
 

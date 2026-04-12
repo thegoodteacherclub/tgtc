@@ -522,6 +522,35 @@ textarea {
   gap: 0.8rem;
 }
 
+.example-model-card {
+  margin-top: 0.2rem;
+  border: 1px solid #d8c8e8;
+  border-radius: 10px;
+  background: #fbf8fe;
+  padding: 0.62rem 0.66rem;
+}
+
+.example-model-block + .example-model-block {
+  margin-top: 0.45rem;
+  padding-top: 0.45rem;
+  border-top: 1px dashed #ddd0eb;
+}
+
+.example-model-block p {
+  margin: 0.1rem 0;
+}
+
+.example-model-label {
+  margin: 0 0 0.2rem;
+  font-size: 0.84rem;
+  font-weight: 800;
+  color: #512275;
+}
+
+.example-model-block ol {
+  margin: 0.2rem 0 0.1rem 1rem;
+}
+
 .activity-divider {
   margin: 0.2rem 0;
   border: 0;

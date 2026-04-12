@@ -390,6 +390,7 @@ async function generateActivity() {
     result = await enforceInternalConsistency(result, payload);
     result = materializeMissingTextSupportsLocally(result, payload);
     result = materializeMissingTablesLocally(result);
+    result = materializeMissingGraphSupportsLocally(result, payload);
     result = await enforceExampleAnchoring(result, payload);
     result = await enforceExamplePedagogyQuality(result, payload);
     validateOutput(result);
@@ -1562,6 +1563,12 @@ function detectConsistencyIssues(result) {
           `Actividad ${activityIndex + 1} de la página ${pageIndex + 1}: se pide leer un resumen/texto/caso que no está visible para el alumnado.`
         );
       }
+      const graphNeedsAnchor = activityHasDanglingGraphReference(activity, result);
+      if (graphNeedsAnchor) {
+        issues.push(
+          `Actividad ${activityIndex + 1} de la página ${pageIndex + 1}: se pide observar gráficos, pero no hay gráficos visibles incluidos.`
+        );
+      }
 
       const support = String(activity.supportMaterial || "").trim();
       if (!support || isNoSupportMaterial(support) || isInherentClassroomMaterial(support)) {
@@ -1779,6 +1786,120 @@ function materializeMissingTablesLocally(result) {
   pendingQualityWarning =
     "Aviso de calidad: se añadió automáticamente la tabla solicitada por el enunciado para mantener coherencia entre consigna y material disponible.";
 
+  return result;
+}
+
+function referencesExternalGraph(text) {
+  const value = normalizeSupportLabel(text);
+  if (!value) return false;
+  return (
+    /\b(observa|consulta|analiza|interpreta|lee)\b[^.:\n]{0,35}\b(siguiente|siguientes)\b[^.:\n]{0,20}\b(grafico|graficos|grafica|graficas|diagrama|curva|curvas)\b/.test(
+      value
+    ) ||
+    /\b(lee|analiza)\b[^.:\n]{0,25}\b(ejes|curvas)\b/.test(value)
+  );
+}
+
+function activityNeedsGraph(activity) {
+  const merged = [activity?.taskTitle, activity?.statement, ...(activity?.steps || []), activity?.expectedOutput]
+    .filter(Boolean)
+    .join(" ");
+  const value = normalizeSupportLabel(merged);
+  if (!value) return false;
+  return (
+    /\b(grafico|graficos|grafica|graficas|diagrama|curva|curvas|ejes)\b/.test(value) &&
+    /\b(observa|analiza|interpreta|identifica|compara|lee|responde)\b/.test(value)
+  );
+}
+
+function isGraphLikeAsset(asset) {
+  if (!asset) return false;
+  const corpus = normalizeSupportLabel(
+    [asset.title, asset.instruction, asset.imagePrompt, ...(asset.tableColumns || []), ...(asset.tableRows || []).flat()].filter(Boolean).join(" ")
+  );
+  return /\b(grafico|graficos|grafica|graficas|curva|curvas|eje|ejes|energia|entalpia|entalpia)\b/.test(corpus);
+}
+
+function activityHasDanglingGraphReference(activity, result) {
+  const merged = [activity?.taskTitle, activity?.statement, ...(activity?.steps || []), activity?.expectedOutput]
+    .filter(Boolean)
+    .join(" ");
+  if (!referencesExternalGraph(merged) && !activityNeedsGraph(activity)) return false;
+
+  const visualAssets = result?.studentMaterial?.visualAssets || [];
+  return !visualAssets.some((asset) => isGraphLikeAsset(asset));
+}
+
+function buildAutoGraphAssetsForActivity(activity, index, payload) {
+  const contextTitle =
+    payload?.articlePreview?.title ||
+    payload?.eventDescription ||
+    "situación de actualidad trabajada en clase";
+
+  const imageAsset = {
+    assetType: "image",
+    title: `Gráfico de variación de energía (Actividad ${index + 1})`,
+    instruction: "Observa las dos curvas y compara cuál reacción absorbe energía y cuál la libera.",
+    imagePrompt:
+      `Infografía educativa clara para alumnado: gráfico de líneas con ejes etiquetados ` +
+      `"Progreso de reacción" (eje X) y "Energía" (eje Y), dos curvas contrastadas: ` +
+      `Reacción A endotérmica (termina más alta que empieza) y Reacción B exotérmica ` +
+      `(termina más baja que empieza), estilo limpio de cuaderno escolar, leyenda visible, ` +
+      `texto en español, contexto: ${String(contextTitle).slice(0, 180)}.`,
+    tableColumns: [],
+    tableRows: []
+  };
+
+  const tableAsset = {
+    assetType: "table",
+    title: `Datos para interpretar el gráfico (Actividad ${index + 1})`,
+    instruction: "Usa esta tabla para justificar tus respuestas sobre las curvas de energía.",
+    imagePrompt: "",
+    tableColumns: ["Punto", "Reacción A (kJ)", "Reacción B (kJ)"],
+    tableRows: [
+      ["Inicio", "20", "20"],
+      ["Punto intermedio", "35", "10"],
+      ["Final", "45", "5"]
+    ]
+  };
+
+  return [imageAsset, tableAsset];
+}
+
+function materializeMissingGraphSupportsLocally(result, payload) {
+  const pages = result?.studentMaterial?.workbookPages || [];
+  if (!Array.isArray(pages) || pages.length === 0) return result;
+
+  if (!Array.isArray(result.studentMaterial?.visualAssets)) {
+    result.studentMaterial.visualAssets = [];
+  }
+
+  const demandActivities = [];
+  pages.forEach((page) => {
+    (page?.activities || []).forEach((activity) => {
+      if (activityNeedsGraph(activity) || referencesExternalGraph(activity?.statement || "")) {
+        demandActivities.push(activity);
+      }
+    });
+  });
+  if (demandActivities.length === 0) return result;
+
+  const graphAssetsCount = result.studentMaterial.visualAssets.filter((asset) => isGraphLikeAsset(asset)).length;
+  if (graphAssetsCount >= demandActivities.length) return result;
+
+  const missingCount = demandActivities.length - graphAssetsCount;
+  for (let i = 0; i < missingCount; i += 1) {
+    const activity = demandActivities[i];
+    const [imageAsset, tableAsset] = buildAutoGraphAssetsForActivity(activity, i, payload);
+    result.studentMaterial.visualAssets.push(imageAsset, tableAsset);
+
+    if (!String(activity.supportMaterial || "").trim() || isNoSupportMaterial(activity.supportMaterial)) {
+      activity.supportMaterial = `${imageAsset.title} | ${tableAsset.title}`;
+    }
+  }
+
+  pendingQualityWarning =
+    "Aviso de calidad: se añadieron automáticamente gráficos y datos de apoyo para cumplir consignas de observación/interpretación de gráficos.";
   return result;
 }
 

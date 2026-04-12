@@ -92,6 +92,7 @@ const nodes = {
   exportTeacherDocxBtn: document.getElementById("exportTeacherDocxBtn"),
   exportStudentPdfBtn: document.getElementById("exportStudentPdfBtn"),
   exportTeacherPdfBtn: document.getElementById("exportTeacherPdfBtn"),
+  printViewBtn: document.getElementById("printViewBtn"),
   regenerateBtn: document.getElementById("regenerateBtn"),
   copyFeedback: document.getElementById("copyFeedback"),
   tabs: document.getElementById("tabs"),
@@ -167,6 +168,7 @@ function setupListeners() {
   nodes.exportTeacherDocxBtn.addEventListener("click", exportTeacherDocx);
   nodes.exportStudentPdfBtn.addEventListener("click", exportStudentPdf);
   nodes.exportTeacherPdfBtn.addEventListener("click", exportTeacherPdf);
+  nodes.printViewBtn.addEventListener("click", printCurrentView);
   nodes.regenerateBtn.addEventListener("click", generateActivity);
   nodes.resetBtn.addEventListener("click", resetForm);
 }
@@ -386,6 +388,7 @@ async function generateActivity() {
     result = await enforceCurriculumAlignment(result, payload);
     validateOutput(result);
     result = await enforceInternalConsistency(result, payload);
+    result = await enforceExampleAnchoring(result, payload);
     validateOutput(result);
     await enrichVisualAssets(result);
     lastResult = result;
@@ -599,6 +602,7 @@ Regla crítica de precisión:
 - Está prohibido desalinear la propuesta con el encargo docente.
 - Si el docente menciona ejemplos, materiales, pasos o acciones concretas, debes incluirlos explícitamente en el cuaderno del alumnado (no como promesa futura).
 - Está prohibido escribir frases tipo "el docente dará ejemplos" sin incluir esos ejemplos de forma literal en la propuesta.
+- Si una actividad dice "sigue/lee/revisa el ejemplo", el ejemplo resuelto debe aparecer escrito dentro de esa misma actividad (en enunciado, pasos o instrucciones del bloque).
 - Si se piden varios conceptos a la vez, incluye actividades que los combinen explícitamente en la misma tarea.
 
 Regla crítica de imágenes:
@@ -662,6 +666,7 @@ Calidad obligatoria:
 - Entrega un cuaderno del alumnado final y usable sin rediseño.
 - Si una tarea menciona imágenes, gráficos o tablas, debes proporcionar el recurso visual completo en visualAssets.
 - Si una tarea declara "Material de apoyo incluido", ese material debe aparecer realmente en la salida final.
+- Si una tarea menciona un ejemplo, incluye el ejemplo literal y resuelto en esa tarea (no remitir a material inexistente).
 - Entrega tareas completas redactadas para copiar/pegar, no solo ideas o orientaciones.`;
 
   return { system, user };
@@ -1531,6 +1536,13 @@ function detectConsistencyIssues(result) {
 
   workbookPages.forEach((page, pageIndex) => {
     (page.activities || []).forEach((activity, activityIndex) => {
+      const exampleNeedsAnchor = activityHasDanglingExampleReference(activity, page, result);
+      if (exampleNeedsAnchor) {
+        issues.push(
+          `Actividad ${activityIndex + 1} de la página ${pageIndex + 1}: se menciona un ejemplo que no está disponible para el alumnado.`
+        );
+      }
+
       const support = String(activity.supportMaterial || "").trim();
       if (!support || isNoSupportMaterial(support) || isInherentClassroomMaterial(support)) {
         return;
@@ -1570,6 +1582,174 @@ function detectConsistencyIssues(result) {
   return Array.from(new Set(issues));
 }
 
+function collectSupportExampleCorpus(result) {
+  const visualAssets = result?.studentMaterial?.visualAssets || [];
+  const outputAssets = result?.outputSpecificAssets || [];
+  const visualParts = [];
+
+  visualAssets.forEach((asset) => {
+    visualParts.push(asset.title || "", asset.instruction || "", asset.imagePrompt || "");
+    if (asset.assetType === "table") {
+      visualParts.push(...(asset.tableColumns || []));
+      (asset.tableRows || []).forEach((row) => visualParts.push(...(row || [])));
+    }
+  });
+
+  return normalizeSupportLabel([...visualParts, ...outputAssets].filter(Boolean).join(" "));
+}
+
+function referencesExternalExample(text) {
+  const value = normalizeSupportLabel(text);
+  if (!value) return false;
+  return (
+    /\b(siguiendo|sigue|como|lee|revisa|consulta|basate|basandote|apoyate|guiate|segun)\b[^.:\n]{0,45}\bejemplo\b/.test(value) ||
+    /\bejemplo\s+(mostrado|anterior|previo|adjunto|de referencia)\b/.test(value)
+  );
+}
+
+function hasInlineExampleContent(text) {
+  const raw = String(text || "");
+  return /\bejemplo\s*:/i.test(raw) || /\bpor ejemplo\b/i.test(raw) || /\bejemplo resuelto\b/i.test(raw);
+}
+
+function activityHasDanglingExampleReference(activity, page, result) {
+  const supportCorpus = collectSupportExampleCorpus(result);
+  const activityTexts = [
+    activity?.statement || "",
+    ...(activity?.steps || []),
+    activity?.expectedOutput || ""
+  ].filter(Boolean);
+
+  const mentionsExternal = activityTexts.some((text) => referencesExternalExample(text));
+  if (!mentionsExternal) return false;
+
+  const hasInlineExample = activityTexts.some((text) => hasInlineExampleContent(text));
+  const pageHasInlineExample = (page?.studentInstructions || []).some((text) => hasInlineExampleContent(text));
+  const supportHasExample = /\bejemplo\b/.test(supportCorpus) || /\bmodelo resuelto\b/.test(supportCorpus);
+
+  return !hasInlineExample && !pageHasInlineExample && !supportHasExample;
+}
+
+function getMissingExampleAnchors(result) {
+  const missing = [];
+  const workbookPages = result?.studentMaterial?.workbookPages;
+  if (!Array.isArray(workbookPages) || workbookPages.length === 0) {
+    return missing;
+  }
+
+  workbookPages.forEach((page, pageIndex) => {
+    (page.activities || []).forEach((activity, activityIndex) => {
+      if (activityHasDanglingExampleReference(activity, page, result)) {
+        missing.push({
+          pageIndex,
+          activityIndex,
+          taskTitle: activity?.taskTitle || "",
+          statement: activity?.statement || ""
+        });
+      }
+    });
+  });
+
+  return missing;
+}
+
+function buildAutoResolvedExample(activity) {
+  const task = String(activity?.taskTitle || "esta actividad").trim();
+  return `Ejemplo resuelto (${task}): identifica los datos clave del enunciado, aplica el procedimiento en el mismo orden en que aparece y verifica el resultado final antes de resolver el resto de apartados.`;
+}
+
+function materializeMissingExamplesLocally(result, missingAnchors = null) {
+  const workbookPages = result?.studentMaterial?.workbookPages;
+  if (!Array.isArray(workbookPages) || workbookPages.length === 0) {
+    return result;
+  }
+
+  const anchors = Array.isArray(missingAnchors) ? missingAnchors : getMissingExampleAnchors(result);
+  anchors.forEach(({ pageIndex, activityIndex }) => {
+    const page = workbookPages[pageIndex];
+    const activity = page?.activities?.[activityIndex];
+    if (!activity) return;
+
+    const exampleLine = buildAutoResolvedExample(activity);
+    const statement = String(activity.statement || "");
+    if (!/ejemplo resuelto/i.test(statement)) {
+      activity.statement = `${statement.trim()} ${exampleLine}`.trim();
+    }
+
+    if (!Array.isArray(activity.steps)) {
+      activity.steps = [];
+    }
+    if (!activity.steps.some((step) => /ejemplo resuelto|por ejemplo|ejemplo:/i.test(String(step || "")))) {
+      activity.steps.unshift(exampleLine);
+    }
+  });
+
+  return result;
+}
+
+async function enforceExampleAnchoring(result, payload) {
+  const missing = getMissingExampleAnchors(result);
+  if (missing.length === 0) {
+    return result;
+  }
+
+  nodes.loadingText.textContent = "Materializando ejemplos solicitados";
+
+  try {
+    const repaired = await repairExampleAnchoringWithModel(result, payload, missing);
+    const stillMissing = getMissingExampleAnchors(repaired);
+    if (stillMissing.length === 0) {
+      return repaired;
+    }
+    pendingQualityWarning =
+      "Aviso de calidad: se han insertado ejemplos de apoyo automáticamente para evitar referencias a ejemplos no visibles.";
+    return materializeMissingExamplesLocally(repaired, stillMissing);
+  } catch {
+    pendingQualityWarning =
+      "Aviso de calidad: no se pudo materializar con el modelo; se añadieron ejemplos de apoyo automáticos para mantener coherencia.";
+    return materializeMissingExamplesLocally(result, missing);
+  }
+}
+
+async function repairExampleAnchoringWithModel(originalResult, payload, missing) {
+  const labels = missing.map((item) => `página ${item.pageIndex + 1}, actividad ${item.activityIndex + 1}`).join(" | ");
+  const messages = [
+    {
+      role: "system",
+      content:
+        "Corrige una propuesta didáctica JSON para materializar ejemplos faltantes. Si una actividad menciona seguir/revisar un ejemplo, debes incluir un ejemplo resuelto literal dentro de esa misma actividad o en las instrucciones de su bloque. Responde solo JSON válido con el mismo schema."
+    },
+    {
+      role: "user",
+      content: `Actividades con ejemplo faltante: ${labels || "No especificadas"}.
+
+Regla obligatoria:
+- No elimines la referencia al ejemplo.
+- Incluye el ejemplo resuelto de forma explícita y visible para el alumnado dentro de la actividad.
+- Mantén coherencia con edad, materia y consigna original.
+
+Contexto:
+${JSON.stringify(payload)}
+
+JSON actual:
+${JSON.stringify(originalResult)}`
+    }
+  ];
+
+  const response = await requestModel(messages);
+  if (!response.ok) {
+    throw new Error("No se pudo materializar ejemplos con el modelo.");
+  }
+
+  const data = await response.json();
+  const content = data?.choices?.[0]?.message?.content;
+  if (!content) {
+    throw new Error("Respuesta vacía al materializar ejemplos.");
+  }
+
+  return JSON.parse(content);
+}
+
 async function repairConsistencyWithModel(originalResult, payload, issues) {
   const messages = [
     {
@@ -1581,7 +1761,7 @@ async function repairConsistencyWithModel(originalResult, payload, issues) {
       role: "user",
       content: `Corrige estas incoherencias detectadas:\n- ${issues.join("\n- ")}\n\nContexto original:\n${JSON.stringify(
         payload
-      )}\n\nJSON actual a corregir:\n${JSON.stringify(originalResult)}\n\nRegla: si se menciona un ejercicio/problema/tabla/imagen, ese recurso debe existir realmente en la salida. Si una actividad declara "material de apoyo incluido", ese material también debe existir realmente dentro del JSON final.`
+      )}\n\nJSON actual a corregir:\n${JSON.stringify(originalResult)}\n\nRegla: si se menciona un ejercicio/problema/tabla/imagen, ese recurso debe existir realmente en la salida. Si una actividad declara "material de apoyo incluido", ese material también debe existir realmente dentro del JSON final. Si una actividad pide seguir o revisar un ejemplo, debes incluir el ejemplo resuelto de forma literal en esa actividad.`
     }
   ];
 
@@ -2568,6 +2748,12 @@ function exportTeacherPdf() {
   if (!requireResultForExport()) return;
   const ok = renderTeacherPdfStyled(lastResult, `${getSafeBaseFileName()}-docente.pdf`);
   if (ok) showCopyFeedback("Cuaderno docente (PDF) exportado");
+}
+
+function printCurrentView() {
+  if (!requireResultForExport()) return;
+  hideGeneralError();
+  window.print();
 }
 
 function copyBlock(text, message) {

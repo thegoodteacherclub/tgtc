@@ -389,6 +389,7 @@ async function generateActivity() {
     validateOutput(result);
     result = await enforceInternalConsistency(result, payload);
     result = await enforceExampleAnchoring(result, payload);
+    result = await enforceExamplePedagogyQuality(result, payload);
     validateOutput(result);
     await enrichVisualAssets(result);
     lastResult = result;
@@ -605,6 +606,16 @@ Regla crítica de precisión:
 - Si una actividad dice "sigue/lee/revisa el ejemplo", el ejemplo resuelto debe aparecer escrito dentro de esa misma actividad (en enunciado, pasos o instrucciones del bloque).
 - Si se piden varios conceptos a la vez, incluye actividades que los combinen explícitamente en la misma tarea.
 
+Regla crítica de modelado por ejemplo:
+- Si la propuesta usa "ejemplo resuelto", "modelo", "resolución guiada" o "aprendizaje por ejemplo", debes incluir:
+  1) situación/contexto del problema,
+  2) datos iniciales,
+  3) qué se pide,
+  4) resolución modelada paso a paso (datos, estrategia/procedimiento, aplicación, resultado, comprobación),
+  5) un nuevo ejercicio del mismo tipo para el alumno con datos distintos.
+- El ejercicio posterior no puede venir completamente resuelto; puede incluir pistas, pero no la solución final.
+- El ejemplo resuelto y el ejercicio posterior deben entrenar exactamente la misma habilidad o procedimiento.
+
 Regla crítica de imágenes:
 - Si propones imágenes, deben ser coherentes con la noticia base y el contexto real.
 - No inventes países, fronteras, actores geopolíticos o hechos no presentes en la base informativa.
@@ -667,6 +678,7 @@ Calidad obligatoria:
 - Si una tarea menciona imágenes, gráficos o tablas, debes proporcionar el recurso visual completo en visualAssets.
 - Si una tarea declara "Material de apoyo incluido", ese material debe aparecer realmente en la salida final.
 - Si una tarea menciona un ejemplo, incluye el ejemplo literal y resuelto en esa tarea (no remitir a material inexistente).
+- Si hay ejemplo/modelo/resolución guiada, incluye también un ejercicio equivalente para el alumno (misma habilidad, datos distintos, sin solución final).
 - Entrega tareas completas redactadas para copiar/pegar, no solo ideas o orientaciones.`;
 
   return { system, user };
@@ -1747,6 +1759,180 @@ ${JSON.stringify(originalResult)}`
     throw new Error("Respuesta vacía al materializar ejemplos.");
   }
 
+  return JSON.parse(content);
+}
+
+function includesExampleSignal(text) {
+  const value = normalizeSupportLabel(text);
+  if (!value) return false;
+  return /\b(ejemplo resuelto|ejemplo|modelo|resolucion guiada|aprendizaje por ejemplo|modelado)\b/.test(value);
+}
+
+function resultNeedsExamplePedagogy(result, payload) {
+  const teacherNeed = includesExampleSignal(payload?.teacherNotes || "");
+  if (teacherNeed) return true;
+
+  const sequenceNeed = (result?.sequence || []).some((block) => includesExampleSignal(block?.phase || ""));
+  if (sequenceNeed) return true;
+
+  return (result?.studentMaterial?.workbookPages || []).some((page) =>
+    (page?.activities || []).some((activity) =>
+      includesExampleSignal([activity?.taskTitle, activity?.statement, ...(activity?.steps || [])].join(" "))
+    )
+  );
+}
+
+function hasStepByStepModel(text) {
+  const value = normalizeSupportLabel(text);
+  return (
+    /\b(datos|dato inicial|se pide|paso 1|paso a paso|procedimiento|estrategia|formula|resultado final|comprobacion|interpretacion)\b/.test(
+      value
+    ) && /\bresultado\b/.test(value)
+  );
+}
+
+function hasTransferExercise(text) {
+  const value = normalizeSupportLabel(text);
+  return /\b(ahora tu|nuevo ejercicio|practica autonoma|intentalo|resuelve ahora)\b/.test(value);
+}
+
+function getExampleQualityGaps(result) {
+  const gaps = [];
+  const pages = result?.studentMaterial?.workbookPages || [];
+
+  pages.forEach((page, pageIndex) => {
+    (page.activities || []).forEach((activity, activityIndex) => {
+      const merged = [activity?.taskTitle, activity?.statement, ...(activity?.steps || []), activity?.expectedOutput].filter(Boolean).join(" ");
+      if (!includesExampleSignal(merged)) return;
+
+      if (!hasStepByStepModel(merged)) {
+        gaps.push(
+          `página ${pageIndex + 1}, actividad ${activityIndex + 1}: falta modelo resuelto con pasos explícitos (datos, procedimiento, aplicación, resultado, comprobación).`
+        );
+      }
+      if (!hasTransferExercise(merged)) {
+        gaps.push(
+          `página ${pageIndex + 1}, actividad ${activityIndex + 1}: falta ejercicio de transferencia para alumnado (misma habilidad, datos distintos, sin solución final).`
+        );
+      }
+    });
+  });
+
+  return gaps;
+}
+
+function buildStructuredExampleBlock(activity, payload) {
+  const subject = payload?.subject || "la materia";
+  const task = String(activity?.taskTitle || "la actividad").trim();
+  return [
+    `Ejemplo resuelto (${task})`,
+    `1) Situación: contexto breve vinculado a ${subject}.`,
+    "2) Datos iniciales: identifica y anota todos los datos relevantes.",
+    "3) Qué se pide: expresa con claridad el objetivo del problema.",
+    "4) Resolución modelada paso a paso:",
+    "   - identificación de datos",
+    "   - estrategia/regla/procedimiento",
+    "   - aplicación paso a paso",
+    "   - resultado final",
+    "   - comprobación o interpretación final",
+    "5) Nuevo ejercicio para el alumnado (misma habilidad, datos distintos):",
+    "   - resuélvelo siguiendo el mismo procedimiento",
+    "   - puedes usar estas pistas: identifica datos, elige estrategia y verifica al final",
+    "   - no incluyas la solución final en esta parte"
+  ].join(" ");
+}
+
+function materializeExamplePedagogyLocally(result, payload) {
+  const pages = result?.studentMaterial?.workbookPages || [];
+  pages.forEach((page) => {
+    (page.activities || []).forEach((activity) => {
+      const merged = [activity?.taskTitle, activity?.statement, ...(activity?.steps || [])].filter(Boolean).join(" ");
+      if (!includesExampleSignal(merged)) return;
+
+      const block = buildStructuredExampleBlock(activity, payload);
+      const statement = String(activity.statement || "");
+      if (!/situacion|situación|datos iniciales|resolucion modelada|resolución modelada/i.test(statement)) {
+        activity.statement = `${statement.trim()} ${block}`.trim();
+      }
+      if (!Array.isArray(activity.steps)) activity.steps = [];
+      if (!activity.steps.some((step) => /nuevo ejercicio|ahora tu|ahora tú|misma habilidad/i.test(String(step || "")))) {
+        activity.steps.push("Ahora tú: resuelve un nuevo ejercicio equivalente con datos distintos, aplicando el mismo procedimiento.");
+      }
+    });
+  });
+  return result;
+}
+
+async function enforceExamplePedagogyQuality(result, payload) {
+  if (!resultNeedsExamplePedagogy(result, payload)) {
+    return result;
+  }
+
+  const gaps = getExampleQualityGaps(result);
+  if (gaps.length === 0) {
+    return result;
+  }
+
+  nodes.loadingText.textContent = "Refinando modelado por ejemplo";
+
+  try {
+    const repaired = await repairExamplePedagogyWithModel(result, payload, gaps);
+    const remaining = getExampleQualityGaps(repaired);
+    if (remaining.length === 0) {
+      return repaired;
+    }
+    pendingQualityWarning =
+      "Aviso de calidad: se reforzó automáticamente la estructura de ejemplo resuelto + ejercicio de transferencia para mantener coherencia didáctica.";
+    return materializeExamplePedagogyLocally(repaired, payload);
+  } catch {
+    pendingQualityWarning =
+      "Aviso de calidad: no se pudo refinar con el modelo; se añadió estructura pedagógica local de modelado y transferencia.";
+    return materializeExamplePedagogyLocally(result, payload);
+  }
+}
+
+async function repairExamplePedagogyWithModel(originalResult, payload, gaps) {
+  const messages = [
+    {
+      role: "system",
+      content:
+        "Corrige una propuesta didáctica JSON para aprendizaje por ejemplo. Cuando exista ejemplo/modelo/resolución guiada, incluye obligatoriamente un ejemplo resuelto completo y un ejercicio de transferencia del mismo tipo, sin dar la solución final del ejercicio del alumno. Responde solo JSON válido con el mismo schema."
+    },
+    {
+      role: "user",
+      content: `Deficiencias detectadas:
+- ${gaps.join("\n- ")}
+
+Estructura obligatoria:
+1) contexto,
+2) datos iniciales,
+3) qué se pide,
+4) resolución paso a paso (datos, estrategia, aplicación, resultado, comprobación),
+5) nuevo ejercicio del mismo tipo con datos distintos.
+
+Reglas:
+- El nuevo ejercicio no debe venir totalmente resuelto.
+- Puede incluir pistas, no solución final.
+- Debe mantenerse la misma habilidad/procedimiento entre ejemplo y nuevo ejercicio.
+- Mantén coherencia con edad, materia y contexto del usuario.
+
+Contexto:
+${JSON.stringify(payload)}
+
+JSON actual:
+${JSON.stringify(originalResult)}`
+    }
+  ];
+
+  const response = await requestModel(messages);
+  if (!response.ok) {
+    throw new Error("No se pudo reforzar calidad de ejemplos.");
+  }
+  const data = await response.json();
+  const content = data?.choices?.[0]?.message?.content;
+  if (!content) {
+    throw new Error("Respuesta vacía al reforzar ejemplos.");
+  }
   return JSON.parse(content);
 }
 

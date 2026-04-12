@@ -388,6 +388,7 @@ async function generateActivity() {
     result = await enforceCurriculumAlignment(result, payload);
     validateOutput(result);
     result = await enforceInternalConsistency(result, payload);
+    result = materializeMissingTablesLocally(result);
     result = await enforceExampleAnchoring(result, payload);
     result = await enforceExamplePedagogyQuality(result, payload);
     validateOutput(result);
@@ -1569,7 +1570,10 @@ function detectConsistencyIssues(result) {
   });
 
   const genericImageRef = /\b(observa|consulta|analiza)\s+(la|el|las|los)\s+(imagen|grafico|gráfico)\b/i.test(texts);
-  const genericTableRef = /\b(observa|consulta|analiza)\s+(la|el|las|los)\s+tabla\b/i.test(texts);
+  const genericTableRef =
+    /\b(observa|consulta|analiza)\s+(la|el|las|los)\s+tabla\b/i.test(texts) ||
+    /\b(completa|rellena|llena)\s+(la|el|las|los)?\s*(siguiente\s+)?(tabla|cuadro|esquema)\b/i.test(texts) ||
+    /\b(esquema comparativo|cuadro comparativo)\b/i.test(texts);
   if (genericImageRef && imageCount === 0) {
     issues.push("La propuesta pide observar imágenes, pero no incluye ninguna imagen en visualAssets.");
   }
@@ -1592,6 +1596,92 @@ function detectConsistencyIssues(result) {
   });
 
   return Array.from(new Set(issues));
+}
+
+function activityNeedsTable(activity) {
+  const merged = [activity?.taskTitle, activity?.statement, ...(activity?.steps || []), activity?.expectedOutput]
+    .filter(Boolean)
+    .join(" ");
+  const value = normalizeSupportLabel(merged);
+  if (!value) return false;
+  return (
+    /\b(tabla|cuadro|esquema comparativo|cuadro comparativo|matriz)\b/.test(value) &&
+    /\b(completa|rellena|llena|organiza|registra|anota|clasifica)\b/.test(value)
+  );
+}
+
+function buildAutoTableForActivity(activity, index) {
+  const merged = normalizeSupportLabel(
+    [activity?.taskTitle, activity?.statement, ...(activity?.steps || []), activity?.expectedOutput].filter(Boolean).join(" ")
+  );
+  const chemistryCompare = /\b(endoterm|exoterm)\b/.test(merged);
+
+  if (chemistryCompare) {
+    return {
+      assetType: "table",
+      title: `Tabla comparativa de reacciones (Actividad ${index + 1})`,
+      instruction: "Completa la tabla comparando cada característica entre reacción endotérmica y exotérmica.",
+      imagePrompt: "",
+      tableColumns: ["Característica", "Reacción endotérmica", "Reacción exotérmica"],
+      tableRows: [
+        ["Intercambio de energía con el entorno", "", ""],
+        ["Signo habitual de la energía (kJ)", "", ""],
+        ["Qué ocurre con la temperatura del entorno", "", ""],
+        ["Ejemplo cotidiano", "", ""]
+      ]
+    };
+  }
+
+  return {
+    assetType: "table",
+    title: `Tabla de trabajo (Actividad ${index + 1})`,
+    instruction: "Completa la tabla con la información solicitada en la actividad.",
+    imagePrompt: "",
+    tableColumns: ["Criterio", "Información"],
+    tableRows: [
+      ["Dato o característica 1", ""],
+      ["Dato o característica 2", ""],
+      ["Dato o característica 3", ""],
+      ["Conclusión", ""]
+    ]
+  };
+}
+
+function materializeMissingTablesLocally(result) {
+  const pages = result?.studentMaterial?.workbookPages || [];
+  if (!Array.isArray(pages) || pages.length === 0) return result;
+
+  if (!Array.isArray(result.studentMaterial.visualAssets)) {
+    result.studentMaterial.visualAssets = [];
+  }
+
+  const existingTableCount = result.studentMaterial.visualAssets.filter((asset) => asset?.assetType === "table").length;
+  if (existingTableCount > 0) return result;
+
+  const missingTableActivities = [];
+  pages.forEach((page) => {
+    (page?.activities || []).forEach((activity) => {
+      if (activityNeedsTable(activity)) {
+        missingTableActivities.push(activity);
+      }
+    });
+  });
+
+  if (missingTableActivities.length === 0) return result;
+
+  missingTableActivities.forEach((activity, idx) => {
+    const tableAsset = buildAutoTableForActivity(activity, idx);
+    result.studentMaterial.visualAssets.push(tableAsset);
+
+    if (!String(activity.supportMaterial || "").trim() || isNoSupportMaterial(activity.supportMaterial)) {
+      activity.supportMaterial = tableAsset.title;
+    }
+  });
+
+  pendingQualityWarning =
+    "Aviso de calidad: se añadió automáticamente la tabla solicitada por el enunciado para mantener coherencia entre consigna y material disponible.";
+
+  return result;
 }
 
 function collectSupportExampleCorpus(result) {

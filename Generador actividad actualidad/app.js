@@ -2013,7 +2013,7 @@ function buildResultMetaChips(result) {
 
 function createDocxParagraphsFactory(docxApi) {
   const { Paragraph, TextRun, HeadingLevel, AlignmentType } = docxApi;
-  const DOCX_FONT = "Inter";
+  const DOCX_FONT = "Calibri";
   const run = (text, options = {}) => new TextRun({ text, font: DOCX_FONT, ...options });
 
   const title = (text) =>
@@ -2143,7 +2143,7 @@ async function exportStudentDocx() {
         default: {
           document: {
             run: {
-              font: "Inter"
+              font: "Calibri"
             }
           }
         }
@@ -2226,7 +2226,7 @@ async function exportTeacherDocx() {
         default: {
           document: {
             run: {
-              font: "Inter"
+              font: "Calibri"
             }
           }
         }
@@ -2370,18 +2370,39 @@ function createStyledPdfRenderer(doc) {
   };
 
   const header = (title, subtitle, chips = []) => {
+    const innerWidth = contentWidth - 8;
+    const titleLines = doc.splitTextToSize(String(title || ""), innerWidth);
+    const subtitleLines = subtitle ? doc.splitTextToSize(String(subtitle), innerWidth) : [];
+    const titleLineHeight = 7;
+    const subtitleLineHeight = 4.6;
+    const topPad = 7;
+    const bottomPad = 6;
+    const headerHeight =
+      topPad +
+      titleLines.length * titleLineHeight +
+      (subtitleLines.length > 0 ? 2 + subtitleLines.length * subtitleLineHeight : 0) +
+      bottomPad;
+
     doc.setFillColor(...purple);
-    doc.roundedRect(marginX, y, contentWidth, 24, 3, 3, "F");
+    doc.roundedRect(marginX, y, contentWidth, headerHeight, 3, 3, "F");
     doc.setTextColor(255, 255, 255);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(15);
-    doc.text(title, marginX + 4, y + 9);
+    let cursorY = y + topPad;
+    titleLines.forEach((line) => {
+      doc.text(line, marginX + 4, cursorY);
+      cursorY += titleLineHeight;
+    });
     if (subtitle) {
       doc.setFontSize(10);
       doc.setFont("helvetica", "normal");
-      doc.text(subtitle, marginX + 4, y + 16);
+      cursorY += 1.5;
+      subtitleLines.forEach((line) => {
+        doc.text(line, marginX + 4, cursorY);
+        cursorY += subtitleLineHeight;
+      });
     }
-    y += 30;
+    y += headerHeight + 6;
     if (chips.length > 0) {
       doc.setTextColor(...muted);
       doc.setFontSize(9);

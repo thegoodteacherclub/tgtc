@@ -391,8 +391,11 @@ async function generateActivity() {
     result = materializeMissingTextSupportsLocally(result, payload);
     result = materializeMissingTablesLocally(result);
     result = materializeMissingGraphSupportsLocally(result, payload);
+    result = materializeMissingVisualSupportsLocally(result, payload);
     result = await enforceExampleAnchoring(result, payload);
     result = await enforceExamplePedagogyQuality(result, payload);
+    result = await enforceSemanticCoherence(result, payload);
+    result = await enforceFinalConsistencyGate(result, payload);
     validateOutput(result);
     await enrichVisualAssets(result);
     lastResult = result;
@@ -629,6 +632,10 @@ Regla crítica curricular:
 - Ajusta objetivos, dificultad cognitiva, vocabulario y evidencias al tramo real de edad.
 - Si no hay suficiente certeza curricular del país solicitado, usa como referencia curricular España y decláralo en la guía docente.
 
+Regla crítica de coherencia semántica:
+- Prohibido proponer operaciones con magnitudes incompatibles (ejemplo: sumar personas con días, horas con astronautas, euros con kilómetros).
+- Si usas magnitudes, deben ser comparables y tener sentido didáctico dentro de la misma tarea.
+
 Responde solo JSON válido.`;
 
   const user = `Contexto:
@@ -682,6 +689,7 @@ Calidad obligatoria:
 - Si una tarea declara "Material de apoyo incluido", ese material debe aparecer realmente en la salida final.
 - Si una tarea menciona un ejemplo, incluye el ejemplo literal y resuelto en esa tarea (no remitir a material inexistente).
 - Si hay ejemplo/modelo/resolución guiada, incluye también un ejercicio equivalente para el alumno (misma habilidad, datos distintos, sin solución final).
+- Evita operaciones absurdas o sin sentido entre magnitudes no comparables.
 - Entrega tareas completas redactadas para copiar/pegar, no solo ideas o orientaciones.`;
 
   return { system, user };
@@ -1569,6 +1577,12 @@ function detectConsistencyIssues(result) {
           `Actividad ${activityIndex + 1} de la página ${pageIndex + 1}: se pide observar gráficos, pero no hay gráficos visibles incluidos.`
         );
       }
+      const genericVisualNeedsAnchor = activityHasDanglingGenericVisualReference(activity, result);
+      if (genericVisualNeedsAnchor) {
+        issues.push(
+          `Actividad ${activityIndex + 1} de la página ${pageIndex + 1}: se menciona un recurso visual (imagen/dibujo/mapa/infografía) que no está incluido.`
+        );
+      }
 
       const support = String(activity.supportMaterial || "").trim();
       if (!support || isNoSupportMaterial(support) || isInherentClassroomMaterial(support)) {
@@ -1593,6 +1607,13 @@ function detectConsistencyIssues(result) {
   }
   if (genericTableRef && tableCount === 0) {
     issues.push("La propuesta pide observar tablas, pero no incluye ninguna tabla en visualAssets.");
+  }
+  const genericVisualRef =
+    /\b(observa|consulta|analiza|interpreta)\s+(la|el|las|los)\s+(dibujo|dibujo(s)?|ilustracion|ilustraciones|foto|fotos|mapa|mapas|infografia|infografias|recurso visual)\b/i.test(
+      texts
+    ) || /\b(siguiente|siguientes)\s+(dibujo|ilustracion|foto|mapa|infografia)\b/i.test(texts);
+  if (genericVisualRef && imageCount === 0) {
+    issues.push("La propuesta pide observar un recurso visual, pero no incluye ninguna imagen en visualAssets.");
   }
 
   const imageAssets = visualAssets.filter((a) => a.assetType === "image");
@@ -1901,6 +1922,256 @@ function materializeMissingGraphSupportsLocally(result, payload) {
   pendingQualityWarning =
     "Aviso de calidad: se añadieron automáticamente gráficos y datos de apoyo para cumplir consignas de observación/interpretación de gráficos.";
   return result;
+}
+
+function referencesExternalVisual(text) {
+  const value = normalizeSupportLabel(text);
+  if (!value) return false;
+  return (
+    /\b(observa|consulta|analiza|interpreta|describe)\b[^.:\n]{0,40}\b(siguiente|siguientes|esta|estas|este|estos)\b[^.:\n]{0,20}\b(imagen|imagenes|dibujo|dibujos|ilustracion|ilustraciones|foto|fotos|mapa|mapas|infografia|infografias|recurso visual)\b/.test(
+      value
+    ) ||
+    /\b(observa|consulta|analiza|interpreta|describe)\b[^.:\n]{0,25}\b(imagen|imagenes|dibujo|dibujos|ilustracion|ilustraciones|foto|fotos|mapa|mapas|infografia|infografias)\b/.test(
+      value
+    )
+  );
+}
+
+function isImageLikeReference(text) {
+  const value = normalizeSupportLabel(text);
+  return /\b(imagen|imagenes|dibujo|dibujos|ilustracion|ilustraciones|foto|fotos|mapa|mapas|infografia|infografias|recurso visual)\b/.test(value);
+}
+
+function activityHasDanglingGenericVisualReference(activity, result) {
+  const merged = [activity?.taskTitle, activity?.statement, ...(activity?.steps || []), activity?.expectedOutput]
+    .filter(Boolean)
+    .join(" ");
+  if (!referencesExternalVisual(merged) || !isImageLikeReference(merged)) {
+    return false;
+  }
+  const visualAssets = result?.studentMaterial?.visualAssets || [];
+  const imageAssets = visualAssets.filter((asset) => asset?.assetType === "image");
+  return imageAssets.length === 0;
+}
+
+function buildAutoImageAssetForActivity(activity, index, payload) {
+  const taskLabel = String(activity?.taskTitle || `Actividad ${index + 1}`).trim();
+  const contextTitle =
+    payload?.articlePreview?.title ||
+    payload?.eventDescription ||
+    "situación de actualidad trabajada en clase";
+
+  return {
+    assetType: "image",
+    title: `Recurso visual de apoyo (${taskLabel})`,
+    instruction: "Observa este recurso visual y úsalo para responder la actividad.",
+    imagePrompt:
+      `Ilustración educativa clara para alumnado, coherente con este contexto: ${String(contextTitle).slice(0, 180)}. ` +
+      "Composición neutra, informativa y realista, con elementos explícitos para observación en clase. Sin texto extenso incrustado.",
+    tableColumns: [],
+    tableRows: []
+  };
+}
+
+function materializeMissingVisualSupportsLocally(result, payload) {
+  const pages = result?.studentMaterial?.workbookPages || [];
+  if (!Array.isArray(pages) || pages.length === 0) return result;
+
+  if (!Array.isArray(result.studentMaterial?.visualAssets)) {
+    result.studentMaterial.visualAssets = [];
+  }
+
+  const demandActivities = [];
+  pages.forEach((page) => {
+    (page?.activities || []).forEach((activity) => {
+      if (activityHasDanglingGenericVisualReference(activity, result)) {
+        demandActivities.push(activity);
+      }
+    });
+  });
+
+  if (demandActivities.length === 0) return result;
+
+  demandActivities.forEach((activity, idx) => {
+    const imageAsset = buildAutoImageAssetForActivity(activity, idx, payload);
+    result.studentMaterial.visualAssets.push(imageAsset);
+    if (!String(activity.supportMaterial || "").trim() || isNoSupportMaterial(activity.supportMaterial)) {
+      activity.supportMaterial = imageAsset.title;
+    }
+  });
+
+  pendingQualityWarning =
+    "Aviso de calidad: se añadieron automáticamente recursos visuales faltantes para evitar consignas que remiten a material inexistente.";
+  return result;
+}
+
+function detectSemanticNonsenseIssues(result) {
+  const issues = [];
+  const pages = result?.studentMaterial?.workbookPages || [];
+
+  pages.forEach((page, pageIndex) => {
+    (page?.activities || []).forEach((activity, activityIndex) => {
+      const corpus = [activity?.statement, ...(activity?.steps || [])].filter(Boolean).join(" ");
+      const operationIssues = detectIncompatibleOperationIssues(corpus);
+      operationIssues.forEach((issue) => {
+        issues.push(`Actividad ${activityIndex + 1} de la página ${pageIndex + 1}: ${issue}`);
+      });
+    });
+  });
+
+  return Array.from(new Set(issues));
+}
+
+function detectIncompatibleOperationIssues(text) {
+  const issues = [];
+  const value = normalizeSupportLabel(text);
+  if (!value) return issues;
+
+  const additiveSegments = value.match(/\b(sumar|suma|sumen|suma tu|restar|resta|resten|diferencia entre)\b[^.:\n]{0,120}/g) || [];
+  additiveSegments.forEach((segment) => {
+    const dims = detectDimensionTags(segment);
+    if (dims.size >= 2) {
+      issues.push(`operación aditiva con magnitudes incompatibles detectada ("${segment.slice(0, 90)}...").`);
+    }
+  });
+
+  return issues;
+}
+
+function detectDimensionTags(text) {
+  const value = normalizeSupportLabel(text);
+  const tags = new Set();
+  if (!value) return tags;
+
+  const lexicon = [
+    { tag: "time", terms: ["hora", "horas", "dia", "dias", "semana", "semanas", "mes", "meses", "minuto", "minutos"] },
+    { tag: "people", terms: ["persona", "personas", "alumno", "alumnos", "astronauta", "astronautas", "docente", "docentes"] },
+    { tag: "money", terms: ["euro", "euros", "dolar", "dolares", "peso", "pesos"] },
+    { tag: "distance", terms: ["metro", "metros", "kilometro", "kilometros", "cm", "centimetro", "centimetros"] },
+    { tag: "mass", terms: ["gramo", "gramos", "kilogramo", "kilogramos", "kg"] },
+    { tag: "temperature", terms: ["grado", "grados", "celsius", "temperatura"] }
+  ];
+
+  lexicon.forEach((group) => {
+    if (group.terms.some((term) => new RegExp(`\\b${term}\\b`).test(value))) {
+      tags.add(group.tag);
+    }
+  });
+
+  return tags;
+}
+
+async function enforceSemanticCoherence(result, payload) {
+  const localIssues = detectSemanticNonsenseIssues(result);
+  const audit = await auditSemanticCoherence(result, payload);
+  const criticalIssues = audit?.criticalIssues || [];
+
+  if (localIssues.length === 0 && audit?.isCoherent) {
+    return result;
+  }
+
+  nodes.loadingText.textContent = "Corrigiendo coherencia semántica";
+
+  const combined = Array.from(new Set([...localIssues, ...criticalIssues]));
+  const repaired = await repairSemanticCoherenceWithModel(result, payload, combined);
+  const remainingLocal = detectSemanticNonsenseIssues(repaired);
+  const remainingAudit = await auditSemanticCoherence(repaired, payload);
+
+  if (remainingLocal.length > 0 || !remainingAudit?.isCoherent) {
+    const label = [...remainingLocal, ...(remainingAudit?.criticalIssues || [])].slice(0, 3).join(" | ");
+    throw new Error(
+      `La propuesta sigue teniendo incoherencias semánticas relevantes (${label || "operaciones o relaciones sin sentido"}).`
+    );
+  }
+
+  return repaired;
+}
+
+async function auditSemanticCoherence(result, payload) {
+  const schema = {
+    type: "object",
+    additionalProperties: false,
+    required: ["isCoherent", "criticalIssues"],
+    properties: {
+      isCoherent: { type: "boolean" },
+      criticalIssues: { type: "array", items: { type: "string" } }
+    }
+  };
+
+  const response = await requestStructuredModel({
+    schemaName: "tgtc_semantic_audit",
+    schema,
+    temperature: 0.1,
+    messages: [
+      {
+        role: "system",
+        content:
+          "Eres auditor estricto de coherencia semántica en actividades educativas. Detecta disparates operativos (magnitudes incompatibles, consignas imposibles, relaciones sin sentido) y marca isCoherent=false si aparecen."
+      },
+      {
+        role: "user",
+        content: `Contexto:\n${JSON.stringify(payload)}\n\nJSON generado:\n${JSON.stringify(result)}`
+      }
+    ]
+  });
+
+  if (!response.ok) {
+    return { isCoherent: false, criticalIssues: ["No se pudo auditar coherencia semántica."] };
+  }
+  const data = await response.json();
+  const content = data?.choices?.[0]?.message?.content;
+  if (!content) {
+    return { isCoherent: false, criticalIssues: ["Auditoría semántica vacía."] };
+  }
+  try {
+    return JSON.parse(content);
+  } catch {
+    return { isCoherent: false, criticalIssues: ["Auditoría semántica inválida."] };
+  }
+}
+
+async function repairSemanticCoherenceWithModel(originalResult, payload, issues) {
+  const messages = [
+    {
+      role: "system",
+      content:
+        "Corrige una propuesta didáctica JSON para eliminar disparates semánticos y operaciones sin sentido. Mantén edad, materia y contexto, y responde solo JSON válido con el mismo schema."
+    },
+    {
+      role: "user",
+      content: `Incoherencias detectadas:\n- ${(issues || []).join("\n- ") || "No especificadas"}\n\nReglas:\n- No mezclar magnitudes incompatibles en sumas/restas.\n- No proponer tareas imposibles o absurdas.\n- Mantener consistencia con la noticia/contexto original.\n\nContexto:\n${JSON.stringify(payload)}\n\nJSON actual:\n${JSON.stringify(originalResult)}`
+    }
+  ];
+
+  const response = await requestModel(messages);
+  if (!response.ok) {
+    throw new Error("No se pudo corregir la coherencia semántica.");
+  }
+  const data = await response.json();
+  const content = data?.choices?.[0]?.message?.content;
+  if (!content) {
+    throw new Error("Respuesta vacía al corregir coherencia semántica.");
+  }
+  return JSON.parse(content);
+}
+
+async function enforceFinalConsistencyGate(result, payload) {
+  const issues = detectConsistencyIssues(result);
+  if (issues.length === 0) {
+    return result;
+  }
+
+  nodes.loadingText.textContent = "Aplicando control final de consistencia";
+  const repaired = await repairConsistencyWithModel(result, payload, issues);
+  const remaining = detectConsistencyIssues(repaired);
+
+  if (remaining.length > 0) {
+    throw new Error(
+      `La propuesta final mantiene referencias a materiales no incluidos o incoherencias internas (${remaining.slice(0, 3).join(" | ")}).`
+    );
+  }
+
+  return repaired;
 }
 
 function collectSupportExampleCorpus(result) {

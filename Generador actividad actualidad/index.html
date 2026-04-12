@@ -29,7 +29,12 @@
           <p class="hero-note">Diseño didáctico con criterio profesional</p>
         </div>
         <h1>Diseña actividades sobre actualidad.</h1>
-        <p class="lead">Esta aplicación te ayuda a genera actividades sobre actualidad con estructura, criterio y foco real en el aprendizaje.</p>
+        <p class="lead">Genera actividades sobre actualidad con estructura, criterio y foco real en el aprendizaje.</p>
+        <p class="quote">No necesitas hacer más. Necesitas diseñar mejor.</p>
+      </section>
+
+      <section class="actions top-actions no-print">
+        <button id="resetBtn" class="btn btn-ghost" type="button">Limpiar formulario</button>
       </section>
 
       <section class="card section-card">
@@ -167,7 +172,6 @@
 
       <section class="actions no-print">
         <button id="generateBtn" class="btn btn-main" type="button">Generar actividad</button>
-        <button id="resetBtn" class="btn btn-ghost" type="button">Limpiar formulario</button>
         <span id="loadingText" class="loading hidden">Analizando la base informativa</span>
       </section>
 
@@ -183,8 +187,10 @@
             <button class="btn btn-soft" id="copyAllBtn" type="button">Copiar resultado</button>
             <button class="btn btn-soft" id="copySequenceBtn" type="button">Copiar secuencia</button>
             <button class="btn btn-soft" id="copyDimensionsBtn" type="button">Copiar dimensiones</button>
-            <button class="btn btn-soft" id="exportDocxBtn" type="button">Exportar .docx</button>
-            <button class="btn btn-soft" id="printBtn" type="button">Imprimir / PDF</button>
+            <button class="btn btn-soft" id="exportStudentDocxBtn" type="button">Alumno .docx</button>
+            <button class="btn btn-soft" id="exportTeacherDocxBtn" type="button">Docente .docx</button>
+            <button class="btn btn-soft" id="exportStudentPdfBtn" type="button">Alumno PDF</button>
+            <button class="btn btn-soft" id="exportTeacherPdfBtn" type="button">Docente PDF</button>
             <button class="btn btn-main" id="regenerateBtn" type="button">Generar otra versión</button>
           </div>
         </header>
@@ -199,6 +205,7 @@
 
     <script src="https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.umd.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
     <script src="app.js"></script>
   </body>
 </html>

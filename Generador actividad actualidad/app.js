@@ -2013,63 +2013,65 @@ function buildResultMetaChips(result) {
 
 function createDocxParagraphsFactory(docxApi) {
   const { Paragraph, TextRun, HeadingLevel, AlignmentType } = docxApi;
+  const DOCX_FONT = "Inter";
+  const run = (text, options = {}) => new TextRun({ text, font: DOCX_FONT, ...options });
 
   const title = (text) =>
     new Paragraph({
       spacing: { after: 120 },
-      children: [new TextRun({ text, bold: true, color: "53207F", size: 38 })]
+      children: [run(text, { bold: true, color: "53207F", size: 38 })]
     });
 
   const brand = () =>
     new Paragraph({
       spacing: { after: 220 },
-      children: [new TextRun({ text: "The Good Teacher Club", bold: true, color: "6E2EA6", size: 24 })]
+      children: [run("", { bold: true, color: "6E2EA6", size: 24 })]
     });
 
   const chips = (items) =>
     new Paragraph({
       spacing: { after: 220 },
-      children: [new TextRun({ text: items.join("  |  "), color: "512275", size: 20 })]
+      children: [run(items.join("  |  "), { color: "512275", size: 20 })]
     });
 
   const section = (text) =>
     new Paragraph({
       heading: HeadingLevel.HEADING_2,
       spacing: { before: 120, after: 110 },
-      children: [new TextRun({ text, bold: true, color: "512275", size: 26 })]
+      children: [run(text, { bold: true, color: "512275", size: 26 })]
     });
 
   const activityTitle = (text) =>
     new Paragraph({
       heading: HeadingLevel.HEADING_3,
-      spacing: { before: 80, after: 80 },
-      children: [new TextRun({ text, bold: true, color: "43205F", size: 24 })]
+      spacing: { before: 80, after: 140 },
+      children: [run(text, { bold: true, color: "43205F", size: 24 })]
     });
 
   const modeChip = (text) =>
     new Paragraph({
       spacing: { after: 90 },
-      children: [new TextRun({ text: `[${text}]`, bold: true, color: "6E2EA6", size: 20 })]
+      children: [run(`[${text}]`, { bold: true, color: "6E2EA6", size: 20 })]
     });
 
   const body = (text, after = 90) =>
     new Paragraph({
       spacing: { after },
-      children: [new TextRun({ text: String(text || ""), size: 22, color: "261336" })]
+      children: [run(String(text || ""), { size: 22, color: "261336" })]
     });
 
   const bullet = (text) =>
     new Paragraph({
       spacing: { after: 70 },
       indent: { left: 320, hanging: 180 },
-      children: [new TextRun({ text: `• ${text}`, size: 21, color: "261336" })]
+      children: [run(`• ${text}`, { size: 21, color: "261336" })]
     });
 
   const divider = () =>
     new Paragraph({
       alignment: AlignmentType.LEFT,
       spacing: { before: 80, after: 80 },
-      children: [new TextRun({ text: "────────────────────────────────────────", color: "C8B2DB", size: 18 })]
+      children: [run("────────────────────────────────────────", { color: "C8B2DB", size: 18 })]
     });
 
   return { title, brand, chips, section, activityTitle, modeChip, body, bullet, divider };
@@ -2092,7 +2094,6 @@ async function exportStudentDocx() {
 
     docChildren.push(
       P.title(`${lastResult.title || "Actividad didáctica"} · Cuaderno del alumnado`),
-      P.brand(),
       P.chips(chips),
       P.body(lastResult.studentMaterial?.studentIntro || "", 150),
       P.section("Formato de Entrega Final"),
@@ -2138,6 +2139,15 @@ async function exportStudentDocx() {
     );
 
     const doc = new Document({
+      styles: {
+        default: {
+          document: {
+            run: {
+              font: "Inter"
+            }
+          }
+        }
+      },
       sections: [
         {
           properties: {
@@ -2173,7 +2183,6 @@ async function exportTeacherDocx() {
 
     docChildren.push(
       P.title(`${lastResult.title || "Actividad didáctica"} · Cuaderno docente`),
-      P.brand(),
       P.chips(chips),
       P.body(lastResult.teacherGuide?.implementationSummary || "", 220)
     );
@@ -2213,6 +2222,15 @@ async function exportTeacherDocx() {
     );
 
     const doc = new Document({
+      styles: {
+        default: {
+          document: {
+            run: {
+              font: "Inter"
+            }
+          }
+        }
+      },
       sections: [
         {
           properties: {
@@ -2358,9 +2376,11 @@ function createStyledPdfRenderer(doc) {
     doc.setFont("helvetica", "bold");
     doc.setFontSize(15);
     doc.text(title, marginX + 4, y + 9);
-    doc.setFontSize(10);
-    doc.setFont("helvetica", "normal");
-    doc.text(subtitle, marginX + 4, y + 16);
+    if (subtitle) {
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "normal");
+      doc.text(subtitle, marginX + 4, y + 16);
+    }
     y += 30;
     if (chips.length > 0) {
       doc.setTextColor(...muted);
@@ -2421,7 +2441,7 @@ function createStyledPdfRenderer(doc) {
       doc.setTextColor(81, 34, 117);
       doc.text(chip, chipX + 3, y + 6.3);
     }
-    y += 16;
+    y += 20;
     bodyLines.forEach((line) => paragraph(line, { size: 10, after: 0.5 }));
     y += 2;
   };
@@ -2442,7 +2462,7 @@ function renderStudentPdfStyled(result, filename) {
   const activities = buildStudentWorkbookEntries(result);
   const visualAssets = result.studentMaterial?.visualAssets || [];
 
-  r.header(`${result.title || "Actividad didáctica"} · Alumnado`, "The Good Teacher Club", buildResultMetaChips(result));
+  r.header(`${result.title || "Actividad didáctica"} · Alumnado`, "", buildResultMetaChips(result));
   r.paragraph(result.studentMaterial?.studentIntro || "");
   r.section("Formato de entrega final");
   r.paragraph(result.studentMaterial?.finalSubmissionInstruction || "");
@@ -2487,7 +2507,7 @@ function renderTeacherPdfStyled(result, filename) {
   const r = createStyledPdfRenderer(doc);
   const entries = buildTeacherWorkbookEntries(result);
 
-  r.header(`${result.title || "Actividad didáctica"} · Docente`, "The Good Teacher Club", buildResultMetaChips(result));
+  r.header(`${result.title || "Actividad didáctica"} · Docente`, "", buildResultMetaChips(result));
   r.section("Resumen de implementación");
   r.paragraph(result.teacherGuide?.implementationSummary || "");
 

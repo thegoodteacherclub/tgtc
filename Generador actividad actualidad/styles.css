@@ -307,6 +307,11 @@ textarea {
   gap: 0.8rem;
 }
 
+.top-actions {
+  justify-content: flex-start;
+  margin-top: -0.2rem;
+}
+
 .loading {
   color: var(--muted);
   font-weight: 700;
@@ -489,6 +494,51 @@ textarea {
   color: #43205f;
 }
 
+.student-task-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.7rem;
+}
+
+.activity-mode-chip {
+  border: 1px solid #bea3d8;
+  border-radius: 999px;
+  background: #f7effc;
+  color: #512275;
+  padding: 0.24rem 0.64rem;
+  font-size: 0.8rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.student-doc,
+.teacher-doc {
+  border: 1px solid #ccb7de8f;
+  border-radius: 16px;
+  background: #fff;
+  padding: 1rem;
+  display: grid;
+  gap: 0.8rem;
+}
+
+.activity-divider {
+  margin: 0.2rem 0;
+  border: 0;
+  border-top: 1px solid #e2d5ec;
+}
+
+.teacher-guidance {
+  border: 1px solid #d5c2e4;
+  border-radius: 12px;
+  background: #faf5fe;
+  padding: 0.7rem;
+}
+
+.teacher-guidance p {
+  margin: 0.35rem 0;
+}
+
 .sequence-phase {
   border: 1px solid #d8c7e7;
   border-radius: 14px;
@@ -514,6 +564,12 @@ textarea {
   margin: 0 0 0.35rem;
   color: #43205f;
   font-size: 1rem;
+}
+
+.ai-disclaimer {
+  margin: 0.45rem 0 0.65rem;
+  font-size: 0.88rem;
+  color: #5e4b6f;
 }
 
 .generated-image {

@@ -30,8 +30,8 @@ const LOADING_STEPS = [
 ];
 const TABS = [
   { key: "student", label: "Cuaderno del alumnado" },
-  { key: "sequence", label: "Secuencia en aula" },
   { key: "teacher", label: "Cuaderno docente" },
+  { key: "sequence", label: "Secuencia en aula" },
   { key: "assessment", label: "Evaluación" },
   { key: "dimensions", label: "Dimensiones metodológicas" }
 ];

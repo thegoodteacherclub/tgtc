@@ -29,9 +29,9 @@ const LOADING_STEPS = [
   "Preparando la propuesta final"
 ];
 const TABS = [
-  { key: "student", label: "Material del alumnado" },
+  { key: "student", label: "Cuaderno del alumnado" },
   { key: "sequence", label: "Secuencia en aula" },
-  { key: "teacher", label: "Guía docente" },
+  { key: "teacher", label: "Cuaderno docente" },
   { key: "assessment", label: "Evaluación" },
   { key: "dimensions", label: "Dimensiones metodológicas" }
 ];
@@ -88,8 +88,10 @@ const nodes = {
   copyAllBtn: document.getElementById("copyAllBtn"),
   copySequenceBtn: document.getElementById("copySequenceBtn"),
   copyDimensionsBtn: document.getElementById("copyDimensionsBtn"),
-  exportDocxBtn: document.getElementById("exportDocxBtn"),
-  printBtn: document.getElementById("printBtn"),
+  exportStudentDocxBtn: document.getElementById("exportStudentDocxBtn"),
+  exportTeacherDocxBtn: document.getElementById("exportTeacherDocxBtn"),
+  exportStudentPdfBtn: document.getElementById("exportStudentPdfBtn"),
+  exportTeacherPdfBtn: document.getElementById("exportTeacherPdfBtn"),
   regenerateBtn: document.getElementById("regenerateBtn"),
   copyFeedback: document.getElementById("copyFeedback"),
   tabs: document.getElementById("tabs"),
@@ -161,8 +163,10 @@ function setupListeners() {
   nodes.copyDimensionsBtn.addEventListener("click", () =>
     copyBlock(JSON.stringify(lastResult?.dimensionsSummary || [], null, 2), "Bloque de dimensiones copiado")
   );
-  nodes.exportDocxBtn.addEventListener("click", exportResultAsDocx);
-  nodes.printBtn.addEventListener("click", () => window.print());
+  nodes.exportStudentDocxBtn.addEventListener("click", exportStudentDocx);
+  nodes.exportTeacherDocxBtn.addEventListener("click", exportTeacherDocx);
+  nodes.exportStudentPdfBtn.addEventListener("click", exportStudentPdf);
+  nodes.exportTeacherPdfBtn.addEventListener("click", exportTeacherPdf);
   nodes.regenerateBtn.addEventListener("click", generateActivity);
   nodes.resetBtn.addEventListener("click", resetForm);
 }
@@ -379,6 +383,8 @@ async function generateActivity() {
     validateOutput(result);
     result = await enforceTeacherInstructionAlignment(result, payload);
     validateOutput(result);
+    result = await enforceCurriculumAlignment(result, payload);
+    validateOutput(result);
     result = await enforceInternalConsistency(result, payload);
     validateOutput(result);
     await enrichVisualAssets(result);
@@ -413,10 +419,112 @@ function buildPayload() {
     teacherNotes: state.teacherNotes.trim(),
     teacherRequirements: extractTeacherRequirements(state.teacherNotes),
     requestedConcepts,
+    curriculumContext: buildCurriculumContext({
+      stage: state.stage === "Otra etapa" ? state.stageOther.trim() : state.stage,
+      age: Number(state.age),
+      country: state.country === "Otros" ? state.countryOther.trim() : state.country,
+      subject: state.subject === "Otra" ? state.subjectOther.trim() : state.subject
+    }),
     eventDescription: state.eventDescription.trim(),
     eventUrl: state.eventUrl.trim(),
     articlePreview: state.articlePreview
   };
+}
+
+function buildCurriculumContext({ stage, age, country, subject }) {
+  const resolvedCountry = resolveCurriculumCountry(country);
+  const resolvedCountryLabel = curriculumCountryLabel(resolvedCountry);
+  const educationalBand = inferEducationalBandByAge(age);
+  const subjectFocus = inferSubjectFocus(subject, age);
+  const usesSpainFallback = resolvedCountry !== normalizeCurriculumCountry(country);
+
+  return {
+    requestedCountry: country,
+    curriculumCountry: resolvedCountry,
+    curriculumCountryLabel: resolvedCountryLabel,
+    usesSpainFallback,
+    stage,
+    age,
+    educationalBand,
+    subjectFocus
+  };
+}
+
+function normalizeCurriculumCountry(country) {
+  return String(country || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+function resolveCurriculumCountry(country) {
+  const normalized = normalizeCurriculumCountry(country);
+  const supported = new Set(["espana", "mexico", "colombia", "argentina", "peru", "chile", "ecuador", "honduras", "uruguay"]);
+  return supported.has(normalized) ? normalized : "espana";
+}
+
+function curriculumCountryLabel(normalizedCountry) {
+  const map = {
+    espana: "España",
+    mexico: "México",
+    colombia: "Colombia",
+    argentina: "Argentina",
+    peru: "Perú",
+    chile: "Chile",
+    ecuador: "Ecuador",
+    honduras: "Honduras",
+    uruguay: "Uruguay"
+  };
+  return map[normalizedCountry] || "España";
+}
+
+function inferEducationalBandByAge(age) {
+  const value = Number(age);
+  if (value <= 7) return "primer ciclo (aprox. 1º-2º primaria)";
+  if (value <= 9) return "ciclo medio (aprox. 3º-4º primaria)";
+  if (value <= 11) return "ciclo superior (aprox. 5º-6º primaria)";
+  if (value <= 13) return "primer tramo de secundaria";
+  if (value <= 15) return "tramo intermedio de secundaria";
+  if (value <= 18) return "tramo final de secundaria/bachillerato";
+  return "educación de personas jóvenes/adultas";
+}
+
+function inferSubjectFocus(subject, age) {
+  const normalized = normalizeSupportLabel(subject);
+  const isEarly = Number(age) <= 9;
+
+  if (normalized.includes("lengua")) {
+    return isEarly
+      ? "comprensión lectora literal, vocabulario básico, escritura guiada de frases y párrafos breves"
+      : "comprensión inferencial y crítica, argumentación escrita, síntesis y uso de evidencias";
+  }
+  if (normalized.includes("matemat")) {
+    return isEarly
+      ? "sentido numérico, operaciones básicas, resolución de problemas en contexto cercano"
+      : "modelización de datos, razonamiento proporcional y justificación de procedimientos";
+  }
+  if (normalized.includes("social") || normalized.includes("historia") || normalized.includes("geografia")) {
+    return isEarly
+      ? "nociones de comunidad, tiempo y espacio cercano con lectura básica de fuentes simples"
+      : "análisis de fuentes, causalidad histórica, perspectiva geográfica y ciudadanía crítica";
+  }
+  if (normalized.includes("naturales")) {
+    return isEarly
+      ? "observación guiada, clasificación simple y explicación de fenómenos cotidianos"
+      : "indagación científica, formulación de hipótesis y análisis de evidencias";
+  }
+  if (normalized.includes("tecnologia") || normalized.includes("informatica")) {
+    return isEarly
+      ? "pensamiento computacional inicial, secuencias, uso seguro y responsable"
+      : "resolución de problemas con herramientas digitales, análisis de información y ética digital";
+  }
+  if (normalized.includes("idioma")) {
+    return isEarly
+      ? "comprensión y producción de mensajes simples en contextos cotidianos"
+      : "interacción funcional, comprensión global y producción guiada con propósito comunicativo";
+  }
+  return "competencias clave de la materia ajustadas al tramo de edad con progresión clara de dificultad";
 }
 
 function outputTypeInstruction(type) {
@@ -498,6 +606,11 @@ Regla crítica de imágenes:
 - No inventes países, fronteras, actores geopolíticos o hechos no presentes en la base informativa.
 - Si no hay suficiente certeza factual, usa visuales neutrales y no afirmaciones geopolíticas específicas.
 
+Regla crítica curricular:
+- La propuesta debe estar alineada al currículo esperado del país, materia y edad indicados.
+- Ajusta objetivos, dificultad cognitiva, vocabulario y evidencias al tramo real de edad.
+- Si no hay suficiente certeza curricular del país solicitado, usa como referencia curricular España y decláralo en la guía docente.
+
 Responde solo JSON válido.`;
 
   const user = `Contexto:
@@ -508,6 +621,12 @@ Responde solo JSON válido.`;
 - Tipo de propuesta: ${payload.activityType}
 - Duración/sesiones: ${payload.sessionEstimate || "No indicada"}
 - Indicaciones del docente: ${payload.teacherNotes || "No indicadas"}
+- Alineación curricular obligatoria:
+  - País solicitado: ${payload.curriculumContext?.requestedCountry || payload.country}
+  - País de referencia curricular: ${payload.curriculumContext?.curriculumCountryLabel || "España"}
+  - ¿Fallback a España?: ${payload.curriculumContext?.usesSpainFallback ? "Sí" : "No"}
+  - Tramo educativo esperado por edad: ${payload.curriculumContext?.educationalBand || "No definido"}
+  - Foco curricular de materia esperado: ${payload.curriculumContext?.subjectFocus || "No definido"}
 
 Base informativa:
 - Prioridad: ${sourcePriority}
@@ -752,25 +871,34 @@ async function requestModel(messages) {
 }
 
 async function requestStructuredModel({ messages, schemaName, schema, temperature = 0.2 }) {
-  return fetch(API_PROXY_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      model: "gpt-4.1-mini",
-      temperature,
-      messages,
-      response_format: {
-        type: "json_schema",
-        json_schema: {
-          name: schemaName,
-          strict: true,
-          schema
+  try {
+    return await fetch(API_PROXY_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model: "gpt-4.1-mini",
+        temperature,
+        messages,
+        response_format: {
+          type: "json_schema",
+          json_schema: {
+            name: schemaName,
+            strict: true,
+            schema
+          }
         }
-      }
-    })
-  });
+      })
+    });
+  } catch (error) {
+    if (error instanceof TypeError) {
+      throw new Error(
+        "No se pudo conectar con el Worker (Failed to fetch). Revisa que la URL del Worker esté activa y que CORS permita tu dominio en FRONTEND_ORIGIN."
+      );
+    }
+    throw error;
+  }
 }
 
 async function enrichVisualAssets(result) {
@@ -802,21 +930,29 @@ async function enrichVisualAssets(result) {
 }
 
 async function requestGeneratedImage(prompt) {
-  const response = await fetch(API_PROXY_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      endpoint: "images",
-      payload: {
-        model: "gpt-image-1",
-        prompt,
-        size: "1024x1024",
-        quality: "medium"
-      }
-    })
-  });
+  let response;
+  try {
+    response = await fetch(API_PROXY_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        endpoint: "images",
+        payload: {
+          model: "gpt-image-1",
+          prompt,
+          size: "1024x1024",
+          quality: "medium"
+        }
+      })
+    });
+  } catch (error) {
+    if (error instanceof TypeError) {
+      throw new Error("No se pudo conectar con el Worker para generar imágenes (Failed to fetch).");
+    }
+    throw error;
+  }
 
   if (!response.ok) {
     throw new Error("No se pudo generar una imagen.");
@@ -947,6 +1083,148 @@ async function enforceTeacherInstructionAlignment(result, payload) {
   }
 
   return repaired;
+}
+
+async function enforceCurriculumAlignment(result, payload) {
+  const audit = await auditCurriculumAlignment(result, payload);
+  if (audit.isAligned && (audit.criticalIssues || []).length === 0) {
+    return result;
+  }
+
+  nodes.loadingText.textContent = "Ajustando alineación curricular";
+
+  const repaired = await repairCurriculumAlignmentWithModel(
+    result,
+    payload,
+    audit.missingElements || [],
+    audit.criticalIssues || []
+  );
+  const repairedAudit = await auditCurriculumAlignment(repaired, payload);
+  if (!repairedAudit.isAligned || (repairedAudit.criticalIssues || []).length > 0) {
+    const missingLabel =
+      (repairedAudit.missingElements || []).length > 0
+        ? repairedAudit.missingElements.join(", ")
+        : "desajuste curricular persistente";
+    throw new Error(
+      `La propuesta no quedó bien alineada con currículo por país/edad/materia (${missingLabel}). Vuelve a generar con más detalle.`
+    );
+  }
+
+  return repaired;
+}
+
+async function auditCurriculumAlignment(result, payload) {
+  const auditSchema = {
+    type: "object",
+    additionalProperties: false,
+    required: ["isAligned", "missingElements", "criticalIssues"],
+    properties: {
+      isAligned: { type: "boolean" },
+      missingElements: { type: "array", items: { type: "string" } },
+      criticalIssues: { type: "array", items: { type: "string" } }
+    }
+  };
+
+  const context = payload.curriculumContext || {};
+
+  const response = await requestStructuredModel({
+    schemaName: "tgtc_curriculum_alignment_audit",
+    schema: auditSchema,
+    temperature: 0.1,
+    messages: [
+      {
+        role: "system",
+        content:
+          "Eres auditor estricto de alineación curricular. Evalúa si la propuesta está realmente ajustada a país, edad y materia. Detecta desajustes de nivel cognitivo, objetivos impropios de edad y falta de referencia curricular."
+      },
+      {
+        role: "user",
+        content: `Contexto curricular obligatorio:
+- País solicitado: ${context.requestedCountry || payload.country}
+- País de referencia curricular: ${context.curriculumCountryLabel || "España"}
+- Fallback a España: ${context.usesSpainFallback ? "sí" : "no"}
+- Edad: ${payload.age}
+- Tramo educativo esperado: ${context.educationalBand || "no definido"}
+- Materia: ${payload.subject}
+- Foco curricular esperado: ${context.subjectFocus || "no definido"}
+
+JSON generado:
+${JSON.stringify(result)}`
+      }
+    ]
+  });
+
+  if (!response.ok) {
+    return {
+      isAligned: false,
+      missingElements: ["Alineación curricular no verificable"],
+      criticalIssues: ["No se pudo auditar alineación curricular con el modelo."]
+    };
+  }
+
+  const data = await response.json();
+  const content = data?.choices?.[0]?.message?.content;
+  if (!content) {
+    return {
+      isAligned: false,
+      missingElements: ["Alineación curricular no verificable"],
+      criticalIssues: ["La auditoría curricular devolvió contenido vacío."]
+    };
+  }
+
+  try {
+    return JSON.parse(content);
+  } catch {
+    return {
+      isAligned: false,
+      missingElements: ["Alineación curricular no verificable"],
+      criticalIssues: ["La auditoría curricular devolvió JSON inválido."]
+    };
+  }
+}
+
+async function repairCurriculumAlignmentWithModel(originalResult, payload, missingElements, criticalIssues) {
+  const context = payload.curriculumContext || {};
+  const messages = [
+    {
+      role: "system",
+      content:
+        "Corrige una propuesta didáctica JSON para alinearla estrictamente con currículo por país, edad y materia. Ajusta nivel de complejidad, objetivos, tareas, evidencias y guía docente. Responde solo JSON válido con el mismo schema."
+    },
+    {
+      role: "user",
+      content: `Desajustes detectados: ${(missingElements || []).join(", ") || "ninguno"}.
+Problemas críticos: ${(criticalIssues || []).join(" | ") || "ninguno"}.
+
+Contexto curricular obligatorio:
+- País solicitado: ${context.requestedCountry || payload.country}
+- País de referencia curricular: ${context.curriculumCountryLabel || "España"}
+- Fallback a España: ${context.usesSpainFallback ? "sí" : "no"}
+- Edad: ${payload.age}
+- Tramo educativo esperado: ${context.educationalBand || "no definido"}
+- Materia: ${payload.subject}
+- Foco curricular esperado: ${context.subjectFocus || "no definido"}
+
+Reglas:
+- Asegura que los objetivos y evidencias son apropiados para la edad.
+- Ajusta vocabulario y carga cognitiva al tramo indicado.
+- Si se usa fallback a España, deja constancia explícita en teacherGuide.implementationSummary.
+
+JSON actual:
+${JSON.stringify(originalResult)}`
+    }
+  ];
+
+  const response = await requestModel(messages);
+  if (!response.ok) {
+    throw new Error("No se pudo corregir la alineación curricular.");
+  }
+  const data = await response.json();
+  const content = data?.choices?.[0]?.message?.content;
+  if (!content) {
+    throw new Error("Respuesta vacía al corregir alineación curricular.");
+  }
+  return JSON.parse(content);
 }
 
 async function repairConceptCoverageWithModel(originalResult, payload, missing, criticalIssues) {
@@ -1353,55 +1631,49 @@ function renderTabContent(result) {
   }
 
   if (activeTab === "student") {
-    const pages = result.studentMaterial?.workbookPages || [];
+    const activities = buildStudentWorkbookEntries(result);
     const visualAssets = result.studentMaterial?.visualAssets || [];
     nodes.tabContent.innerHTML = `
-      <div class="block block-highlight">
+      ${renderVisualAssetsHtml(visualAssets)}
+      <article class="student-doc">
         <h3>${escapeHtml(result.studentMaterial?.studentTitle || "Cuaderno del alumnado")}</h3>
         <p>${escapeHtml(result.studentMaterial?.studentIntro || "")}</p>
-      </div>
-      ${renderVisualAssetsHtml(visualAssets)}
-      ${pages
-        .map(
-          (page, pageIndex) => `
-        <article class="student-page">
-          <header class="student-page-head">
-            <span class="student-page-tag">Página ${pageIndex + 1}</span>
-            <h4>${escapeHtml(page.pageTitle || "")}</h4>
-          </header>
-          <div class="student-box">
-            <p class="student-box-title">Instrucciones para el alumnado</p>
-            <ol>
-              ${(page.studentInstructions || []).map((instruction) => `<li>${escapeHtml(instruction)}</li>`).join("")}
-            </ol>
-          </div>
-          ${(page.activities || [])
-            .map(
-              (activity, activityIndex) => `
-            <div class="student-task">
-              <p class="student-task-kicker">Actividad ${activityIndex + 1}</p>
-              <h5>${escapeHtml(activity.taskTitle || "")}</h5>
-              <p><strong>Consigna:</strong> ${escapeHtml(activity.statement || "")}</p>
-              <p><strong>Pasos:</strong></p>
-              <ol>${(activity.steps || []).map((step) => `<li>${escapeHtml(step)}</li>`).join("")}</ol>
-              <p><strong>Formato de respuesta esperado:</strong> ${escapeHtml(activity.expectedOutput || "")}</p>
-              ${
-                activity.supportMaterial
-                  ? `<p><strong>Material de apoyo incluido:</strong> ${escapeHtml(activity.supportMaterial)}</p>`
-                  : ""
-              }
-            </div>
-          `
-            )
-            .join("")}
-        </article>
-      `
-        )
-        .join("")}
-      <div class="block block-highlight">
-        <h4>Entrega final del alumnado</h4>
-        <p>${escapeHtml(result.studentMaterial?.finalSubmissionInstruction || "")}</p>
-      </div>
+        <div class="student-box">
+          <p class="student-box-title">Formato de entrega final (léelo antes de empezar)</p>
+          <p>${escapeHtml(result.studentMaterial?.finalSubmissionInstruction || "")}</p>
+        </div>
+        ${
+          activities.length === 0
+            ? `<p class="muted">No se han encontrado actividades para el alumnado.</p>`
+            : activities
+                .map(
+                  (entry, entryIndex) => `
+                <section class="student-task">
+                  <p class="student-task-kicker">Actividad ${entry.globalIndex}</p>
+                  <div class="student-task-head">
+                    <h5>${escapeHtml(entry.activity.taskTitle || "")}</h5>
+                    <span class="activity-mode-chip">${escapeHtml(entry.modeLabel)}</span>
+                  </div>
+                  <p><strong>Enunciado:</strong><br>${formatStudentStatementHtml(entry)}</p>
+                  ${
+                    Array.isArray(entry.activity.steps) && entry.activity.steps.length > 0
+                      ? `
+                    <p><strong>Desarrollo de la actividad:</strong></p>
+                    <ol>${entry.activity.steps.map((step) => `<li>${escapeHtml(step)}</li>`).join("")}</ol>
+                  `
+                      : ""
+                  }
+                </section>
+                ${entryIndex < activities.length - 1 ? '<hr class="activity-divider" />' : ""}
+              `
+                )
+                .join("")
+        }
+        <div class="student-box">
+          <p class="student-box-title">Recordatorio de entrega final</p>
+          <p>${escapeHtml(result.studentMaterial?.finalSubmissionInstruction || "")}</p>
+        </div>
+      </article>
     `;
     return;
   }
@@ -1428,13 +1700,45 @@ function renderTabContent(result) {
   }
 
   if (activeTab === "teacher") {
+    const teacherActivities = buildTeacherWorkbookEntries(result);
     nodes.tabContent.innerHTML = `
-      <div class="block">
-        <h3>Resumen de implementación docente</h3>
+      <article class="teacher-doc">
+        <h3>Cuaderno docente (misma secuencia que el alumnado)</h3>
         <p>${escapeHtml(result.teacherGuide?.implementationSummary || result.teacherNotes || "")}</p>
-      </div>
+        ${
+          teacherActivities.length === 0
+            ? `<p class="muted">No se han encontrado actividades para generar la guía docente.</p>`
+            : teacherActivities
+                .map(
+                  (entry, idx) => `
+                <section class="student-task">
+                  <p class="student-task-kicker">Actividad ${entry.globalIndex}</p>
+                  <h5>${escapeHtml(entry.activity.taskTitle || "")}</h5>
+                  ${entry.pageTitle ? `<p><strong>Bloque:</strong> ${escapeHtml(entry.pageTitle)}</p>` : ""}
+                  <p><strong>Consigna para alumnado:</strong> ${escapeHtml(entry.activity.statement || "")}</p>
+                  ${
+                    entry.pageInstructions?.length
+                      ? `<p><strong>Indicaciones generales del bloque:</strong> ${escapeHtml(entry.pageInstructions.join(" | "))}</p>`
+                      : ""
+                  }
+                  <p><strong>Pasos que seguirá el alumnado:</strong></p>
+                  <ol>${(entry.activity.steps || []).map((step) => `<li>${escapeHtml(step)}</li>`).join("")}</ol>
+                  <p><strong>Producto esperado del alumnado:</strong> ${escapeHtml(entry.activity.expectedOutput || "")}</p>
+                  <div class="teacher-guidance">
+                    <p><strong>Intención didáctica:</strong> ${escapeHtml(entry.teacherPurpose)}</p>
+                    <p><strong>Intervención docente:</strong> ${escapeHtml(entry.teacherAction)}</p>
+                    <p><strong>Apoyos y materiales para esta actividad:</strong> ${escapeHtml(entry.teacherSupport)}</p>
+                    <p><strong>Qué observar y evaluar:</strong> ${escapeHtml(entry.teacherEvidence)}</p>
+                  </div>
+                </section>
+                ${idx < teacherActivities.length - 1 ? '<hr class="activity-divider" />' : ""}
+              `
+                )
+                .join("")
+        }
+      </article>
       <div class="block">
-        <h3>Apoyos ya integrados en la propuesta</h3>
+        <h3>Apoyos docentes globales</h3>
         <ul>${(result.teacherGuide?.supportsApplied || result.scaffolds || []).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
       </div>
       <div class="block">
@@ -1442,12 +1746,8 @@ function renderTabContent(result) {
         <ul>${(result.teacherGuide?.differentiation || []).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
       </div>
       <div class="block">
-        <h3>Diseño del material (maquetación)</h3>
-        <ul>${(result.materialDesignGuidelines || []).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
-      </div>
-      <div class="block">
-        <h3>Por qué funciona esta propuesta</h3>
-        <p>${escapeHtml(result.teacherGuide?.whyDesignWorks || "")}</p>
+        <h3>Criterios de evaluación</h3>
+        <ul>${(result.teacherGuide?.evaluationCriteria || []).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
       </div>
     `;
     return;
@@ -1490,6 +1790,131 @@ function renderTabContent(result) {
   `;
 }
 
+function flattenWorkbookActivities(result) {
+  const pages = result?.studentMaterial?.workbookPages || [];
+  const list = [];
+  let globalIndex = 1;
+
+  pages.forEach((page, pageIndex) => {
+    const pageInstructions = page?.studentInstructions || [];
+    (page?.activities || []).forEach((activity, activityIndex) => {
+      list.push({
+        globalIndex,
+        pageIndex,
+        activityIndex,
+        pageTitle: page?.pageTitle || "",
+        pageInstructions,
+        activity
+      });
+      globalIndex += 1;
+    });
+  });
+
+  return list;
+}
+
+function buildStudentWorkbookEntries(result) {
+  const entries = flattenWorkbookActivities(result);
+  const sequence = result?.sequence || [];
+
+  return entries.map((entry, idx) => {
+    const seq = sequence[idx % Math.max(1, sequence.length)] || {};
+    const mode = classifyStudentMode(seq);
+    return {
+      ...entry,
+      modeLabel: mode.label,
+      modeNote: mode.note
+    };
+  });
+}
+
+function buildStudentStatementText(entry) {
+  return String(entry?.activity?.statement || "").trim();
+}
+
+function splitQuestionsForReadability(text) {
+  return String(text || "")
+    .replace(/\s+(?=\d+\.\s*¿)/g, "\n")
+    .replace(/\?\s*(?=\d+\.\s*¿)/g, "?\n")
+    .replace(/([.:])\s+(?=¿)/g, "$1\n")
+    .replace(/\?\s*(?=¿)/g, "?\n")
+    .replace(/\?\s+(?=[A-ZÁÉÍÓÚÑ])/g, "?\n");
+}
+
+function formatStudentStatementHtml(entry) {
+  const merged = buildStudentStatementText(entry);
+  const readable = splitQuestionsForReadability(merged);
+  return escapeHtml(readable).replace(/\n/g, "<br>");
+}
+
+function classifyStudentMode(sequenceBlock) {
+  const phase = normalizeSupportLabel(sequenceBlock?.phase || "");
+
+  if (phase.includes("modelado")) {
+    return {
+      label: "Modelado del docente",
+      note: "Primero observa el ejemplo del docente y después replica el procedimiento indicado."
+    };
+  }
+  if (phase.includes("practica guiada")) {
+    return {
+      label: "Práctica guiada",
+      note: "Realiza la actividad con acompañamiento y corrección durante el proceso."
+    };
+  }
+  if (phase.includes("practica autonoma")) {
+    return {
+      label: "Práctica autónoma",
+      note: "Resuélvela de manera individual aplicando lo aprendido."
+    };
+  }
+  if (phase.includes("reto") || phase.includes("producto final")) {
+    return {
+      label: "Aplicación final",
+      note: "Integra lo trabajado en una tarea de cierre con mayor autonomía."
+    };
+  }
+  if (phase.includes("activacion") || phase.includes("presentacion")) {
+    return {
+      label: "Inicio guiado",
+      note: "Actividad de arranque para activar ideas y comprender el objetivo."
+    };
+  }
+  return { label: "Trabajo en aula", note: "" };
+}
+
+function buildTeacherWorkbookEntries(result) {
+  const entries = flattenWorkbookActivities(result);
+  const sequence = result?.sequence || [];
+  const supports = result?.teacherGuide?.supportsApplied || result?.scaffolds || [];
+  const evalCriteria = result?.teacherGuide?.evaluationCriteria || [];
+
+  return entries.map((entry, idx) => {
+    const seq = sequence[idx % Math.max(1, sequence.length)] || {};
+    const supportParts = [
+      entry.activity?.supportMaterial || "",
+      seq.support || "",
+      supports[idx % Math.max(1, supports.length)] || ""
+    ]
+      .map((part) => String(part || "").trim())
+      .filter(Boolean);
+
+    return {
+      ...entry,
+      teacherPurpose: seq.purpose || result?.pedagogicalIntent || "Consolidar el objetivo de aprendizaje de la secuencia.",
+      teacherAction:
+        seq.teacherAction ||
+        "Modela brevemente el procedimiento, verifica comprensión en cada paso y ofrece feedback inmediato antes de avanzar.",
+      teacherSupport: supportParts.join(" | ") || "Revisar consigna, ofrecer ejemplo guiado y retirar apoyo de forma progresiva.",
+      teacherEvidence:
+        seq.expectedEvidence ||
+        evalCriteria[idx % Math.max(1, evalCriteria.length)] ||
+        entry.activity?.expectedOutput ||
+        "Recoger evidencia de proceso y producto para valorar logro del objetivo."
+    };
+  });
+}
+
 function renderVisualAssetsHtml(assets) {
   if (!Array.isArray(assets) || assets.length === 0) {
     return "";
@@ -1529,6 +1954,7 @@ function renderVisualAssetsHtml(assets) {
               <article class="visual-card">
                 <h5>${escapeHtml(asset.title || "Imagen de apoyo")}</h5>
                 <p>${escapeHtml(asset.instruction || "")}</p>
+                <p class="ai-disclaimer"><strong>Aviso:</strong> Recreación visual generada con IA. No corresponde a una fotografía real.</p>
                 ${
                   asset.generatedImageUrl
                     ? `<img class="generated-image" src="${asset.generatedImageUrl}" alt="${escapeHtml(asset.title || "Recurso visual")}" />`
@@ -1561,12 +1987,26 @@ function setLoading(isLoading) {
   }, 1300);
 }
 
-async function exportResultAsDocx() {
+function requireResultForExport() {
   if (!lastResult) {
     showGeneralError("Primero genera una actividad para poder exportarla.");
-    return;
+    return false;
   }
+  return true;
+}
 
+function showCopyFeedback(message) {
+  nodes.copyFeedback.textContent = message;
+  toggleHidden(nodes.copyFeedback, false);
+  setTimeout(() => toggleHidden(nodes.copyFeedback, true), 2200);
+}
+
+function getSafeBaseFileName() {
+  return (lastResult?.title || "actividad-tgtc").replace(/[\\/:*?"<>|]+/g, "").slice(0, 80);
+}
+
+async function exportStudentDocx() {
+  if (!requireResultForExport()) return;
   if (!window.docx || !window.saveAs) {
     showGeneralError("No se ha podido cargar la librería de exportación .docx.");
     return;
@@ -1575,135 +2015,235 @@ async function exportResultAsDocx() {
   try {
     const { Document, Packer, Paragraph, HeadingLevel, TextRun } = window.docx;
     const docChildren = [];
+    const activities = buildStudentWorkbookEntries(lastResult);
+    const visualAssets = lastResult.studentMaterial?.visualAssets || [];
 
     docChildren.push(
-      new Paragraph({ text: lastResult.title || "Actividad didáctica", heading: HeadingLevel.TITLE }),
-      new Paragraph({ text: lastResult.subtitle || "", spacing: { after: 240 } }),
-      new Paragraph({ text: `Tipo: ${lastResult.activityType || ""}` }),
-      new Paragraph({ text: `Etapa: ${lastResult.stageLabel || ""}` }),
-      new Paragraph({ text: `Edad: ${lastResult.age || ""}` }),
-      new Paragraph({ text: `País: ${lastResult.country || ""}` }),
-      new Paragraph({ text: `Asignatura: ${lastResult.subject || ""}`, spacing: { after: 220 } }),
-      new Paragraph({ text: "CUADERNO DEL ALUMNADO", heading: HeadingLevel.HEADING_1 }),
-      new Paragraph({ text: lastResult.studentMaterial?.studentTitle || "", heading: HeadingLevel.HEADING_2 }),
-      new Paragraph({ text: lastResult.studentMaterial?.studentIntro || "", spacing: { after: 200 } })
+      new Paragraph({ text: `${lastResult.title || "Actividad didáctica"} - Cuaderno del alumnado`, heading: HeadingLevel.TITLE }),
+      new Paragraph({ text: lastResult.studentMaterial?.studentIntro || "", spacing: { after: 120 } }),
+      new Paragraph({ text: "Formato de entrega final (léelo antes de empezar)", heading: HeadingLevel.HEADING_2 }),
+      new Paragraph({ text: lastResult.studentMaterial?.finalSubmissionInstruction || "", spacing: { after: 180 } })
     );
 
-    const visualAssets = lastResult.studentMaterial?.visualAssets || [];
     if (visualAssets.length > 0) {
       docChildren.push(new Paragraph({ text: "Recursos visuales incluidos", heading: HeadingLevel.HEADING_2 }));
       visualAssets.forEach((asset) => {
-        docChildren.push(
-          new Paragraph({ text: asset.title || "", heading: HeadingLevel.HEADING_3 }),
-          new Paragraph({ text: asset.instruction || "" })
-        );
-        if (asset.assetType === "table") {
-          const headers = (asset.tableColumns || []).join(" | ");
-          docChildren.push(new Paragraph({ text: `Columnas: ${headers}` }));
-          (asset.tableRows || []).forEach((row) => {
-            docChildren.push(new Paragraph({ text: `- ${(row || []).join(" | ")}` }));
-          });
-        } else {
-          docChildren.push(new Paragraph({ text: `Descripción visual: ${asset.imagePrompt || ""}` }));
-        }
-      });
-    }
-
-    (lastResult.studentMaterial?.workbookPages || []).forEach((page, pageIndex) => {
-      docChildren.push(
-        new Paragraph({ text: `Página ${pageIndex + 1}: ${page.pageTitle || ""}`, heading: HeadingLevel.HEADING_2 }),
-        new Paragraph({ text: "Instrucciones", heading: HeadingLevel.HEADING_3 })
-      );
-
-      (page.studentInstructions || []).forEach((instruction) => {
-        docChildren.push(
-          new Paragraph({
-            children: [new TextRun({ text: `• ${instruction}` })],
-            spacing: { after: 90 }
-          })
-        );
-      });
-
-      (page.activities || []).forEach((activity, idx) => {
-        docChildren.push(
-          new Paragraph({ text: `Actividad ${idx + 1}: ${activity.taskTitle || ""}`, heading: HeadingLevel.HEADING_3 }),
-          new Paragraph({ text: `Consigna: ${activity.statement || ""}` }),
-          new Paragraph({ text: "Pasos:" })
-        );
-        (activity.steps || []).forEach((step) => {
+        docChildren.push(new Paragraph({ text: `${asset.assetType === "table" ? "Tabla" : "Imagen"}: ${asset.title || ""}` }));
+        if (asset.instruction) docChildren.push(new Paragraph({ text: `Uso: ${asset.instruction}` }));
+        if (asset.assetType === "image") {
           docChildren.push(
             new Paragraph({
-              children: [new TextRun({ text: `- ${step}` })],
-              spacing: { after: 80 }
+              text: "Aviso: Recreación visual generada con IA. No corresponde a una fotografía real."
             })
           );
-        });
-        docChildren.push(
-          new Paragraph({ text: `Formato de respuesta esperado: ${activity.expectedOutput || ""}` }),
-          new Paragraph({ text: `Material de apoyo: ${activity.supportMaterial || "No aplica"}`, spacing: { after: 150 } })
-        );
+        }
       });
+      docChildren.push(new Paragraph({ text: "", spacing: { after: 120 } }));
+    }
+
+    activities.forEach((entry) => {
+      const statementLines = splitQuestionsForReadability(buildStudentStatementText(entry))
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean);
+      docChildren.push(
+        new Paragraph({ text: `Actividad ${entry.globalIndex}: ${entry.activity.taskTitle || ""}`, heading: HeadingLevel.HEADING_2 }),
+        new Paragraph({ text: `${entry.modeLabel}` }),
+        new Paragraph({ text: `Enunciado: ${statementLines[0] || ""}` }),
+        ...statementLines.slice(1).map((line) => new Paragraph({ text: line }))
+      );
+      if (Array.isArray(entry.activity.steps) && entry.activity.steps.length > 0) {
+        docChildren.push(new Paragraph({ text: "Desarrollo de la actividad:" }));
+        entry.activity.steps.forEach((step) => {
+          docChildren.push(new Paragraph({ children: [new TextRun({ text: `- ${step}` })], spacing: { after: 70 } }));
+        });
+      }
+      docChildren.push(new Paragraph({ text: "", spacing: { after: 140 } }));
     });
 
     docChildren.push(
-      new Paragraph({ text: "Entrega final del alumnado", heading: HeadingLevel.HEADING_2 }),
-      new Paragraph({ text: lastResult.studentMaterial?.finalSubmissionInstruction || "", spacing: { after: 230 } }),
-      new Paragraph({ text: "GUÍA DOCENTE DE CONSULTA", heading: HeadingLevel.HEADING_1 }),
-      new Paragraph({ text: "Resumen de implementación", heading: HeadingLevel.HEADING_2 }),
-      new Paragraph({ text: lastResult.teacherGuide?.implementationSummary || "", spacing: { after: 140 } }),
-      new Paragraph({ text: "Secuencia de aula", heading: HeadingLevel.HEADING_2 })
+      new Paragraph({ text: "Recordatorio de entrega final", heading: HeadingLevel.HEADING_2 }),
+      new Paragraph({ text: lastResult.studentMaterial?.finalSubmissionInstruction || "", spacing: { after: 170 } })
     );
 
-    (lastResult.sequence || []).forEach((block) => {
+    const doc = new Document({ sections: [{ children: docChildren }] });
+    const blob = await Packer.toBlob(doc);
+    window.saveAs(blob, `${getSafeBaseFileName()}-alumno.docx`);
+    showCopyFeedback("Cuaderno del alumnado (.docx) exportado");
+  } catch {
+    showGeneralError("No se pudo exportar el .docx del alumnado.");
+  }
+}
+
+async function exportTeacherDocx() {
+  if (!requireResultForExport()) return;
+  if (!window.docx || !window.saveAs) {
+    showGeneralError("No se ha podido cargar la librería de exportación .docx.");
+    return;
+  }
+
+  try {
+    const { Document, Packer, Paragraph, HeadingLevel, TextRun } = window.docx;
+    const docChildren = [];
+    const entries = buildTeacherWorkbookEntries(lastResult);
+
+    docChildren.push(
+      new Paragraph({ text: `${lastResult.title || "Actividad didáctica"} - Cuaderno docente`, heading: HeadingLevel.TITLE }),
+      new Paragraph({ text: lastResult.teacherGuide?.implementationSummary || "", spacing: { after: 220 } })
+    );
+
+    entries.forEach((entry) => {
       docChildren.push(
-        new Paragraph({ text: block.phase || "", heading: HeadingLevel.HEADING_2 }),
-        new Paragraph({ text: `Propósito: ${block.purpose || ""}` }),
-        new Paragraph({ text: `Acción docente: ${block.teacherAction || ""}` }),
-        new Paragraph({ text: `Acción del alumnado: ${block.studentAction || ""}` }),
-        new Paragraph({ text: `Apoyo integrado: ${block.support || ""}` }),
-        new Paragraph({ text: `Evidencia esperada: ${block.expectedEvidence || ""}`, spacing: { after: 160 } })
+        new Paragraph({ text: `Actividad ${entry.globalIndex}: ${entry.activity.taskTitle || ""}`, heading: HeadingLevel.HEADING_2 }),
+        new Paragraph({ text: `Bloque: ${entry.pageTitle || "General"}` }),
+        new Paragraph({ text: `Consigna para alumnado: ${entry.activity.statement || ""}` }),
+        new Paragraph({ text: `Indicaciones generales del bloque: ${(entry.pageInstructions || []).join(" | ") || "No aplica"}` }),
+        new Paragraph({ text: "Pasos del alumnado:" })
+      );
+      (entry.activity.steps || []).forEach((step) => {
+        docChildren.push(new Paragraph({ children: [new TextRun({ text: `- ${step}` })], spacing: { after: 70 } }));
+      });
+      docChildren.push(
+        new Paragraph({ text: `Producto esperado del alumnado: ${entry.activity.expectedOutput || ""}` }),
+        new Paragraph({ text: `Intención didáctica: ${entry.teacherPurpose}` }),
+        new Paragraph({ text: `Intervención docente: ${entry.teacherAction}` }),
+        new Paragraph({ text: `Apoyos y materiales: ${entry.teacherSupport}` }),
+        new Paragraph({ text: `Qué observar y evaluar: ${entry.teacherEvidence}`, spacing: { after: 170 } })
       );
     });
 
     docChildren.push(
-      new Paragraph({ text: "Apoyos aplicados", heading: HeadingLevel.HEADING_2 }),
-      ...((lastResult.teacherGuide?.supportsApplied || []).map(
-        (item) =>
-          new Paragraph({
-            children: [new TextRun({ text: `• ${item}` })],
-            spacing: { after: 100 }
-          })
+      new Paragraph({ text: "Diferenciación", heading: HeadingLevel.HEADING_2 }),
+      ...((lastResult.teacherGuide?.differentiation || []).map(
+        (item) => new Paragraph({ children: [new TextRun({ text: `- ${item}` })], spacing: { after: 90 } })
       )),
       new Paragraph({ text: "Criterios de evaluación", heading: HeadingLevel.HEADING_2 }),
       ...((lastResult.teacherGuide?.evaluationCriteria || []).map(
-        (item) =>
-          new Paragraph({
-            children: [new TextRun({ text: `• ${item}` })],
-            spacing: { after: 100 }
-          })
-      )),
-      new Paragraph({ text: "Por qué esta propuesta es consistente con la metodología de The Good Teacher Club", heading: HeadingLevel.HEADING_1 })
+        (item) => new Paragraph({ children: [new TextRun({ text: `- ${item}` })], spacing: { after: 90 } })
+      ))
     );
-    (lastResult.dimensionsSummary || []).forEach((dimension) => {
-      docChildren.push(
-        new Paragraph({ text: dimension.title || "", heading: HeadingLevel.HEADING_2 }),
-        new Paragraph({ text: dimension.explanation || "", spacing: { after: 150 } })
-      );
-    });
 
-    const doc = new Document({
-      sections: [{ children: docChildren }]
-    });
-
+    const doc = new Document({ sections: [{ children: docChildren }] });
     const blob = await Packer.toBlob(doc);
-    const safeName = (lastResult.title || "actividad-tgtc").replace(/[\\/:*?"<>|]+/g, "").slice(0, 80);
-    window.saveAs(blob, `${safeName}.docx`);
-    nodes.copyFeedback.textContent = "Documento .docx exportado";
-    toggleHidden(nodes.copyFeedback, false);
-    setTimeout(() => toggleHidden(nodes.copyFeedback, true), 2200);
+    window.saveAs(blob, `${getSafeBaseFileName()}-docente.docx`);
+    showCopyFeedback("Cuaderno docente (.docx) exportado");
   } catch {
-    showGeneralError("No se pudo exportar el .docx. Intenta de nuevo.");
+    showGeneralError("No se pudo exportar el .docx docente.");
   }
+}
+
+function buildStudentPdfLines(result) {
+  const lines = [];
+  const activities = buildStudentWorkbookEntries(result);
+  const visualAssets = result.studentMaterial?.visualAssets || [];
+  lines.push(`${result.title || "Actividad didáctica"} - Cuaderno del alumnado`);
+  lines.push("");
+  lines.push(result.studentMaterial?.studentIntro || "");
+  lines.push("");
+  lines.push("Formato de entrega final (léelo antes de empezar):");
+  lines.push(result.studentMaterial?.finalSubmissionInstruction || "");
+  lines.push("");
+
+  if (visualAssets.length > 0) {
+    lines.push("Recursos visuales incluidos:");
+    visualAssets.forEach((asset) => {
+      lines.push(`- ${asset.assetType === "table" ? "Tabla" : "Imagen"}: ${asset.title || ""}`);
+      if (asset.instruction) {
+        lines.push(`  Uso: ${asset.instruction}`);
+      }
+      if (asset.assetType === "image") {
+        lines.push("  Aviso: Recreación visual generada con IA. No corresponde a una fotografía real.");
+      }
+    });
+    lines.push("");
+  }
+
+  activities.forEach((entry) => {
+    const statementLines = splitQuestionsForReadability(buildStudentStatementText(entry))
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
+    lines.push(`Actividad ${entry.globalIndex}: ${entry.activity.taskTitle || ""}`);
+    lines.push(`[${entry.modeLabel}]`);
+    lines.push(`Enunciado: ${statementLines[0] || ""}`);
+    statementLines.slice(1).forEach((line) => lines.push(line));
+    if (Array.isArray(entry.activity.steps) && entry.activity.steps.length > 0) {
+      lines.push("Desarrollo de la actividad:");
+      entry.activity.steps.forEach((step, idx) => lines.push(`  ${idx + 1}. ${step}`));
+    }
+    lines.push("");
+  });
+
+  lines.push("Recordatorio de entrega final:");
+  lines.push(result.studentMaterial?.finalSubmissionInstruction || "");
+  return lines;
+}
+
+function buildTeacherPdfLines(result) {
+  const lines = [];
+  const entries = buildTeacherWorkbookEntries(result);
+  lines.push(`${result.title || "Actividad didáctica"} - Cuaderno docente`);
+  lines.push("");
+  lines.push(result.teacherGuide?.implementationSummary || "");
+  lines.push("");
+
+  entries.forEach((entry) => {
+    lines.push(`Actividad ${entry.globalIndex}: ${entry.activity.taskTitle || ""}`);
+    lines.push(`Bloque: ${entry.pageTitle || "General"}`);
+    lines.push(`Consigna para alumnado: ${entry.activity.statement || ""}`);
+    lines.push(`Indicaciones generales del bloque: ${(entry.pageInstructions || []).join(" | ") || "No aplica"}`);
+    lines.push("Pasos del alumnado:");
+    (entry.activity.steps || []).forEach((step, idx) => lines.push(`  ${idx + 1}. ${step}`));
+    lines.push(`Producto esperado: ${entry.activity.expectedOutput || ""}`);
+    lines.push(`Intención didáctica: ${entry.teacherPurpose}`);
+    lines.push(`Intervención docente: ${entry.teacherAction}`);
+    lines.push(`Apoyos y materiales: ${entry.teacherSupport}`);
+    lines.push(`Qué observar y evaluar: ${entry.teacherEvidence}`);
+    lines.push("");
+  });
+
+  return lines;
+}
+
+function saveLinesAsPdf(lines, filename) {
+  if (!window.jspdf?.jsPDF) {
+    showGeneralError("No se ha podido cargar la librería de exportación PDF.");
+    return false;
+  }
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: "mm", format: "a4" });
+  const maxWidth = 180;
+  const pageHeight = 285;
+  let y = 15;
+
+  lines.forEach((line) => {
+    const chunks = doc.splitTextToSize(String(line || ""), maxWidth);
+    const draw = chunks.length > 0 ? chunks : [""];
+    draw.forEach((chunk) => {
+      if (y > pageHeight) {
+        doc.addPage();
+        y = 15;
+      }
+      doc.text(chunk, 15, y);
+      y += 6;
+    });
+  });
+
+  doc.save(filename);
+  return true;
+}
+
+function exportStudentPdf() {
+  if (!requireResultForExport()) return;
+  const ok = saveLinesAsPdf(buildStudentPdfLines(lastResult), `${getSafeBaseFileName()}-alumno.pdf`);
+  if (ok) showCopyFeedback("Cuaderno del alumnado (PDF) exportado");
+}
+
+function exportTeacherPdf() {
+  if (!requireResultForExport()) return;
+  const ok = saveLinesAsPdf(buildTeacherPdfLines(lastResult), `${getSafeBaseFileName()}-docente.pdf`);
+  if (ok) showCopyFeedback("Cuaderno docente (PDF) exportado");
 }
 
 function copyBlock(text, message) {

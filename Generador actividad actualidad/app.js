@@ -1765,15 +1765,16 @@ ${JSON.stringify(originalResult)}`
 function includesExampleSignal(text) {
   const value = normalizeSupportLabel(text);
   if (!value) return false;
-  return /\b(ejemplo resuelto|ejemplo|modelo|resolucion guiada|aprendizaje por ejemplo|modelado)\b/.test(value);
+  return (
+    /\b(ejemplo resuelto|ejemplo guiado|modelo resuelto|resolucion guiada|aprendizaje por ejemplo)\b/.test(value) ||
+    /\b(sigue|siguiendo|lee|revisa|consulta|guiate|basate|basandote)\b[^.:\n]{0,45}\bejemplo\b/.test(value) ||
+    /\bejemplo\s+(mostrado|anterior|previo|adjunto|de referencia)\b/.test(value)
+  );
 }
 
 function resultNeedsExamplePedagogy(result, payload) {
   const teacherNeed = includesExampleSignal(payload?.teacherNotes || "");
   if (teacherNeed) return true;
-
-  const sequenceNeed = (result?.sequence || []).some((block) => includesExampleSignal(block?.phase || ""));
-  if (sequenceNeed) return true;
 
   return (result?.studentMaterial?.workbookPages || []).some((page) =>
     (page?.activities || []).some((activity) =>
@@ -2020,7 +2021,7 @@ function renderTabContent(result) {
                     <h5>${escapeHtml(entry.activity.taskTitle || "")}</h5>
                     <span class="activity-mode-chip">${escapeHtml(entry.modeLabel)}</span>
                   </div>
-                  <p><strong>Enunciado:</strong><br>${formatStudentStatementHtml(entry)}</p>
+                  <div><strong>Enunciado:</strong><br>${formatStudentStatementHtml(entry)}</div>
                   ${
                     Array.isArray(entry.activity.steps) && entry.activity.steps.length > 0
                       ? `
@@ -2207,8 +2208,111 @@ function splitQuestionsForReadability(text) {
     .replace(/\?\s+(?=[A-ZÁÉÍÓÚÑ])/g, "?\n");
 }
 
+function splitExampleStatementSections(text) {
+  const normalized = String(text || "")
+    .replace(
+      /\s+(?=(Contexto:|Datos iniciales:|Qué se pide:|Que se pide:|Resolución paso a paso:|Resolucion paso a paso:|Ejercicio de transferencia:|Ejercicio para el alumnado:|Ahora tú:|Ahora tu:))/gi,
+      "\n"
+    )
+    .replace(/\s+(?=\d+\.\s)/g, "\n");
+
+  const lines = normalized
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  const sections = {
+    intro: [],
+    context: [],
+    data: [],
+    ask: [],
+    resolution: [],
+    transfer: []
+  };
+
+  let current = "intro";
+  lines.forEach((line) => {
+    const lowered = normalizeSupportLabel(line);
+    if (lowered.startsWith("contexto:")) {
+      current = "context";
+      const content = line.replace(/^contexto:\s*/i, "").trim();
+      if (content) sections.context.push(content);
+      return;
+    }
+    if (lowered.startsWith("datos iniciales:")) {
+      current = "data";
+      const content = line.replace(/^datos iniciales:\s*/i, "").trim();
+      if (content) sections.data.push(content);
+      return;
+    }
+    if (lowered.startsWith("que se pide:") || lowered.startsWith("qué se pide:")) {
+      current = "ask";
+      const content = line.replace(/^qu[eé]\s+se\s+pide:\s*/i, "").trim();
+      if (content) sections.ask.push(content);
+      return;
+    }
+    if (lowered.startsWith("resolucion paso a paso:") || lowered.startsWith("resolución paso a paso:")) {
+      current = "resolution";
+      const content = line.replace(/^resoluci[oó]n\s+paso\s+a\s+paso:\s*/i, "").trim();
+      if (content) sections.resolution.push(content);
+      return;
+    }
+    if (
+      lowered.startsWith("ejercicio de transferencia:") ||
+      lowered.startsWith("ejercicio para el alumnado:") ||
+      lowered.startsWith("ahora tu:") ||
+      lowered.startsWith("ahora tú:")
+    ) {
+      current = "transfer";
+      const content = line
+        .replace(/^ejercicio\s+de\s+transferencia:\s*/i, "")
+        .replace(/^ejercicio\s+para\s+el\s+alumnado:\s*/i, "")
+        .replace(/^ahora\s+t[uú]:\s*/i, "")
+        .trim();
+      if (content) sections.transfer.push(content);
+      return;
+    }
+
+    sections[current].push(line);
+  });
+
+  return sections;
+}
+
+function formatStructuredExampleStatementHtml(text) {
+  const sections = splitExampleStatementSections(text);
+  const renderParagraphs = (lines) => lines.map((line) => `<p>${escapeHtml(line)}</p>`).join("");
+  const resolutionItems = sections.resolution
+    .map((line) => line.replace(/^\d+\.\s*/, "").trim())
+    .filter(Boolean);
+  const resolutionHtml =
+    resolutionItems.length > 0
+      ? `<ol>${resolutionItems.map((line) => `<li>${escapeHtml(line)}</li>`).join("")}</ol>`
+      : "";
+
+  return `
+    <div class="example-model-card">
+      ${sections.intro.length ? `<div class="example-model-block">${renderParagraphs(sections.intro)}</div>` : ""}
+      ${sections.context.length ? `<div class="example-model-block"><p class="example-model-label">Contexto</p>${renderParagraphs(sections.context)}</div>` : ""}
+      ${sections.data.length ? `<div class="example-model-block"><p class="example-model-label">Datos iniciales</p>${renderParagraphs(sections.data)}</div>` : ""}
+      ${sections.ask.length ? `<div class="example-model-block"><p class="example-model-label">Qué se pide</p>${renderParagraphs(sections.ask)}</div>` : ""}
+      ${
+        sections.resolution.length
+          ? `<div class="example-model-block"><p class="example-model-label">Resolución paso a paso</p>${resolutionHtml || renderParagraphs(
+              sections.resolution
+            )}</div>`
+          : ""
+      }
+      ${sections.transfer.length ? `<div class="example-model-block"><p class="example-model-label">Ejercicio de transferencia</p>${renderParagraphs(sections.transfer)}</div>` : ""}
+    </div>
+  `;
+}
+
 function formatStudentStatementHtml(entry) {
   const merged = buildStudentStatementText(entry);
+  if (includesExampleSignal(merged)) {
+    return formatStructuredExampleStatementHtml(merged);
+  }
   const readable = splitQuestionsForReadability(merged);
   return escapeHtml(readable).replace(/\n/g, "<br>");
 }

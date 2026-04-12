@@ -388,6 +388,7 @@ async function generateActivity() {
     result = await enforceCurriculumAlignment(result, payload);
     validateOutput(result);
     result = await enforceInternalConsistency(result, payload);
+    result = materializeMissingTextSupportsLocally(result, payload);
     result = materializeMissingTablesLocally(result);
     result = await enforceExampleAnchoring(result, payload);
     result = await enforceExamplePedagogyQuality(result, payload);
@@ -1555,6 +1556,12 @@ function detectConsistencyIssues(result) {
           `Actividad ${activityIndex + 1} de la página ${pageIndex + 1}: se menciona un ejemplo que no está disponible para el alumnado.`
         );
       }
+      const summaryNeedsAnchor = activityHasDanglingSummaryReference(activity, page, result);
+      if (summaryNeedsAnchor) {
+        issues.push(
+          `Actividad ${activityIndex + 1} de la página ${pageIndex + 1}: se pide leer un resumen/texto/caso que no está visible para el alumnado.`
+        );
+      }
 
       const support = String(activity.supportMaterial || "").trim();
       if (!support || isNoSupportMaterial(support) || isInherentClassroomMaterial(support)) {
@@ -1596,6 +1603,97 @@ function detectConsistencyIssues(result) {
   });
 
   return Array.from(new Set(issues));
+}
+
+function referencesExternalSummary(text) {
+  const value = normalizeSupportLabel(text);
+  if (!value) return false;
+  return (
+    /\b(lee|revisa|consulta|analiza)\b[^.:\n]{0,35}\b(siguiente|anterior)\b[^.:\n]{0,18}\b(resumen|texto|caso|noticia)\b/.test(value) ||
+    /\b(segun|según)\b[^.:\n]{0,25}\b(resumen|texto|caso|noticia)\b/.test(value)
+  );
+}
+
+function hasInlineSummaryContent(text) {
+  const raw = String(text || "");
+  return (
+    /\bresumen\s*:/i.test(raw) ||
+    /\btexto\s*:/i.test(raw) ||
+    /\bcaso\s*:/i.test(raw) ||
+    /\bnoticia\s*:/i.test(raw)
+  );
+}
+
+function activityHasDanglingSummaryReference(activity, page, result) {
+  const supportCorpus = collectSupportExampleCorpus(result);
+  const activityTexts = [
+    activity?.statement || "",
+    ...(activity?.steps || []),
+    activity?.expectedOutput || ""
+  ].filter(Boolean);
+
+  const mentionsExternal = activityTexts.some((text) => referencesExternalSummary(text));
+  if (!mentionsExternal) return false;
+
+  const hasInlineSummary = activityTexts.some((text) => hasInlineSummaryContent(text));
+  const pageHasInlineSummary = (page?.studentInstructions || []).some((text) => hasInlineSummaryContent(text));
+  const supportHasSummary = /\b(resumen|texto|caso|noticia)\b/.test(supportCorpus);
+
+  return !hasInlineSummary && !pageHasInlineSummary && !supportHasSummary;
+}
+
+function buildAutoSummaryFromPayload(payload, result) {
+  const source =
+    payload?.articlePreview?.summary ||
+    result?.currentEventSummary ||
+    payload?.eventDescription ||
+    payload?.articlePreview?.content ||
+    "";
+
+  const clean = String(source || "").replace(/\s+/g, " ").trim();
+  if (!clean) {
+    return "Resumen: información no disponible en la fuente original. Usa los datos aportados por tu docente para responder.";
+  }
+  const clipped = clean.length > 420 ? `${clean.slice(0, 417)}...` : clean;
+  return `Resumen: ${clipped}`;
+}
+
+function materializeMissingTextSupportsLocally(result, payload) {
+  const pages = result?.studentMaterial?.workbookPages || [];
+  if (!Array.isArray(pages) || pages.length === 0) return result;
+
+  let patched = 0;
+  pages.forEach((page) => {
+    (page?.activities || []).forEach((activity) => {
+      if (!activityHasDanglingSummaryReference(activity, page, result)) return;
+
+      const summaryLine = buildAutoSummaryFromPayload(payload, result);
+      const statement = String(activity.statement || "").trim();
+      if (!/resumen\s*:/i.test(statement)) {
+        activity.statement = `${statement}\n\n${summaryLine}`.trim();
+      }
+
+      if (!Array.isArray(activity.steps)) {
+        activity.steps = [];
+      }
+      if (!activity.steps.some((step) => /\blee\b[^.:\n]{0,25}\bresumen\b/i.test(String(step || "")))) {
+        activity.steps.unshift("Lee primero el resumen incluido en el enunciado antes de responder.");
+      }
+
+      if (!String(activity.supportMaterial || "").trim() || isNoSupportMaterial(activity.supportMaterial)) {
+        activity.supportMaterial = "Resumen base incluido en el enunciado";
+      }
+
+      patched += 1;
+    });
+  });
+
+  if (patched > 0) {
+    pendingQualityWarning =
+      "Aviso de calidad: se añadió automáticamente el resumen/texto de apoyo que exigía la consigna para evitar referencias a materiales inexistentes.";
+  }
+
+  return result;
 }
 
 function activityNeedsTable(activity) {

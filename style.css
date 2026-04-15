@@ -1249,9 +1249,13 @@ h3 {
 
 .skool-space-card {
   padding: 16px;
-  border: 1px solid var(--line);
+  border: 1px solid rgba(110, 46, 166, 0.16);
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.84);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 242, 252, 0.9) 100%);
+  box-shadow:
+    0 8px 18px rgba(69, 39, 102, 0.05),
+    inset 0 1px 0 rgba(255, 255, 255, 0.75);
 }
 
 .skool-space-card h3 {
